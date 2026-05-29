@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+*.log
+
+# Local secrets and generated native artifacts
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+.env
+.env.*
+
+# ML model binaries are intentionally sourced separately.
+models/*.tflite
+!models/README.md

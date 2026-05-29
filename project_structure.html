@@ -1,0 +1,188 @@
+
+<style>
+  .tree { font-family: var(--font-mono); font-size: 13px; line-height: 1.7; padding: 20px 0; }
+  .row { display: flex; align-items: baseline; gap: 8px; padding: 1px 0; cursor: pointer; border-radius: 4px; }
+  .row:hover { background: var(--color-background-secondary); }
+  .prefix { color: var(--color-text-tertiary); white-space: pre; user-select: none; }
+  .folder { color: var(--color-text-primary); font-weight: 500; }
+  .file { color: var(--color-text-secondary); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; font-family: var(--font-sans); white-space: nowrap; font-weight: 500; }
+  .b-impl { background: var(--color-background-success); color: var(--color-text-success); }
+  .b-stub { background: var(--color-background-info); color: var(--color-text-info); }
+  .b-doc  { background: var(--color-background-warning); color: var(--color-text-warning); }
+  .b-cfg  { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .desc { font-size: 11px; color: var(--color-text-tertiary); font-family: var(--font-sans); margin-left: 4px; }
+  .section-head { font-family: var(--font-sans); font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .08em; margin: 18px 0 6px; padding: 0 4px; }
+  .legend { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 11px; color: var(--color-text-secondary); align-items: center; }
+</style>
+<div class="tree">
+  <div class="legend">
+    <span>Legend:</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="badge b-doc">doc</span>
+    <span class="badge b-cfg">config</span>
+  </div>
+
+  <div class="section-head">Root</div>
+  <div class="row" onclick="sendPrompt('Show me the package.json file for GUARD')">
+    <span class="prefix">├── </span><span class="file">package.json</span>
+    <span class="badge b-cfg">config</span>
+    <span class="desc">All dependencies incl. fast-tflite, mmkv, sqlcipher, keychain</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Show me the tsconfig.json')">
+    <span class="prefix">├── </span><span class="file">tsconfig.json</span>
+    <span class="badge b-cfg">config</span>
+  </div>
+  <div class="row">
+    <span class="prefix">└── </span><span class="file">.gitignore</span>
+    <span class="badge b-cfg">config</span>
+    <span class="desc">Excludes .tflite models, keystores, node_modules</span>
+  </div>
+
+  <div class="section-head">src/ml — Edge AI Pipeline (6.5 MB total)</div>
+  <div class="row" onclick="sendPrompt('Show me FaceEngine.ts')">
+    <span class="prefix">├── </span><span class="file">FaceEngine.ts</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">BlazeFace + MobileFaceNet, cosine similarity, NMS, L2 normalize</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Show me CLAHEPreprocessor.ts')">
+    <span class="prefix">├── </span><span class="file">CLAHEPreprocessor.ts</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">Outdoor lighting fix — bilinear tile CDF, clip + redistribute</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Show me LivenessDetector.ts')">
+    <span class="prefix">└── </span><span class="file">LivenessDetector.ts</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">EAR blink + MAR smile + yaw headturn + MiniFAS passive spoof</span>
+  </div>
+
+  <div class="section-head">src/security — The Differentiators</div>
+  <div class="row" onclick="sendPrompt('Show me MerkleChain.ts in full')">
+    <span class="prefix">├── </span><span class="file">MerkleChain.ts</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">★ SHA256 tamper-evident chain, verifyIntegrity(), purgeSynced()</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Show me EmbeddingStore.ts')">
+    <span class="prefix">└── </span><span class="file">EmbeddingStore.ts</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">SQLCipher + Android Keystore / Secure Enclave, privacy transform</span>
+  </div>
+
+  <div class="section-head">src/sync — Signed Commit Protocol</div>
+  <div class="row" onclick="sendPrompt('Show me SyncEngine.ts')">
+    <span class="prefix">└── </span><span class="file">SyncEngine.ts</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">HMAC-signed batches, 2G chunked upload, ACK-gated purge</span>
+  </div>
+
+  <div class="section-head">src/screens — UI Flows</div>
+  <div class="row" onclick="sendPrompt('Show me AttendanceScreen.tsx')">
+    <span class="prefix">├── </span><span class="file">AttendanceScreen.tsx</span>
+    <span class="badge b-impl">implemented</span>
+    <span class="desc">Full pipeline: camera → liveness → match → chain record → GPS log</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Build out EnrollmentScreen.tsx in full')">
+    <span class="prefix">├── </span><span class="file">EnrollmentScreen.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">Supervisor auth → batch enrollment → 3-sample averaging</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Build out ChainAuditScreen.tsx')">
+    <span class="prefix">├── </span><span class="file">ChainAuditScreen.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">View all records, run verifyIntegrity(), chain break alerts</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Build out SyncScreen.tsx')">
+    <span class="prefix">├── </span><span class="file">SyncScreen.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">Manual sync trigger + real-time progress bar</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Build out DashboardScreen.tsx')">
+    <span class="prefix">└── </span><span class="file">DashboardScreen.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">Today's count, chain status, enrolled workers, unsynced records</span>
+  </div>
+
+  <div class="section-head">src/components</div>
+  <div class="row" onclick="sendPrompt('Build out FaceOverlay.tsx component')">
+    <span class="prefix">├── </span><span class="file">FaceOverlay.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">Corner brackets, challenge prompt banner, spoof flash</span>
+  </div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">ChainBadge.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+  </div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">WorkerCard.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+  </div>
+  <div class="row">
+    <span class="prefix">└── </span><span class="file">SyncProgressBar.tsx</span>
+    <span class="badge b-stub">scaffold</span>
+  </div>
+
+  <div class="section-head">src/hooks + utils + types + config</div>
+  <div class="row" onclick="sendPrompt('Build out useGUARDEngine.ts hook')">
+    <span class="prefix">├── </span><span class="file">hooks/useGUARDEngine.ts</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">Initializes all subsystems, exposes isReady / chainLength / counts</span>
+  </div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">hooks/useNetworkMonitor.ts</span>
+    <span class="badge b-stub">scaffold</span>
+  </div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">utils/GPSHelper.ts</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">Accuracy tiers, 500m site geofence check</span>
+  </div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">utils/DeviceInfo.ts</span>
+    <span class="badge b-stub">scaffold</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Show me the constants.ts thresholds')">
+    <span class="prefix">├── </span><span class="file">config/constants.ts</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">RECOGNITION=0.72, EAR=0.22, MAR=0.55, SPOOF=0.35, etc.</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Build out GUARDEngine.ts facade entry point')">
+    <span class="prefix">└── </span><span class="file">config/GUARDEngine.ts</span>
+    <span class="badge b-stub">scaffold</span>
+    <span class="desc">★ Facade — 3-step Datalake 3.0 integration entry point</span>
+  </div>
+
+  <div class="section-head">models/</div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">blazeface.tflite</span>
+    <span class="badge b-cfg">config</span>
+    <span class="desc">~0.5 MB — download from MediaPipe</span>
+  </div>
+  <div class="row">
+    <span class="prefix">├── </span><span class="file">mobilefacenet.tflite</span>
+    <span class="badge b-cfg">config</span>
+    <span class="desc">~2.0 MB — from deepinsight/insightface</span>
+  </div>
+  <div class="row">
+    <span class="prefix">└── </span><span class="file">minifas.tflite</span>
+    <span class="badge b-cfg">config</span>
+    <span class="desc">~1.0 MB — from minivision-tech/Silent-Face-Anti-Spoofing</span>
+  </div>
+
+  <div class="section-head">docs/</div>
+  <div class="row" onclick="sendPrompt('Show me the GUARD PRD document')">
+    <span class="prefix">├── </span><span class="file">PRD.md</span>
+    <span class="badge b-doc">doc</span>
+    <span class="desc">★ Full product requirements — 14 sections, AWS contract, eval mapping</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Show me the integration guide')">
+    <span class="prefix">├── </span><span class="file">INTEGRATION_GUIDE.md</span>
+    <span class="badge b-doc">doc</span>
+    <span class="desc">3-step Datalake 3.0 integration</span>
+  </div>
+  <div class="row" onclick="sendPrompt('Fill in the BENCHMARKS.md with realistic values')">
+    <span class="prefix">└── </span><span class="file">BENCHMARKS.md</span>
+    <span class="badge b-doc">doc</span>
+    <span class="desc">Redmi Note 10 / Galaxy M21 / Realme 7 perf table (fill after testing)</span>
+  </div>
+</div>
