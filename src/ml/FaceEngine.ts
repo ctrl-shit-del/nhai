@@ -59,7 +59,7 @@ export class FaceEngine {
     this.enrolled.push({ ...profile, embedding: this.l2Normalize(embedding) });
   }
 
-  match(embedding: number[], threshold = GUARD_THRESHOLDS.recognition): RecognitionResult | null {
+  match(embedding: number[], threshold: number = GUARD_THRESHOLDS.recognition): RecognitionResult | null {
     this.assertReady();
     const normalized = this.l2Normalize(embedding);
     let best: { worker: StoredEmbedding; confidence: number } | null = null;

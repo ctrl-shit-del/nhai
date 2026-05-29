@@ -73,10 +73,13 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+    androidResources {
+        noCompress += ["tflite"]
+    }
 
-    namespace "com.app"
+    namespace "com.guard.datalake"
     defaultConfig {
-        applicationId "com.app"
+        applicationId "com.guard.datalake"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
