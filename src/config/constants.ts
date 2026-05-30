@@ -3,6 +3,7 @@ export const GUARD_THRESHOLDS = {
   highConfidence: 0.85,
   mediumConfidence: 0.72,
   faceQuality: 0.6,
+  EMBEDDING_DIM: 192,
   eyeAspectRatio: 0.22,
   mouthAspectRatio: 0.55,
   passiveSpoof: 0.35,

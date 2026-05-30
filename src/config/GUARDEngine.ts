@@ -295,8 +295,8 @@ export class GUARDEngine {
         const input  = cropAndNormalize(frame, face, MINIFAS_INPUT_SIZE, 0, 1);
         const output = await this.models.minifas.run([input]);
         const scores = output[0] as Float32Array;
-        // scores = [spoof_prob, real_prob] — convert to unified spoofScore [0,1]
-        const spoofScore = scores.length >= 2 ? 1.0 - scores[1] : 1.0;
+        // scores = [real_prob, print_prob, replay_prob]
+        const spoofScore = scores.length >= 1 ? 1.0 - scores[0] : 1.0;
         return this.livenessDetector.evaluatePassiveFromScore(session, spoofScore);
       } catch (minifasError) {
         console.warn('[GUARDEngine] MiniFAS inference error — falling back to heuristic.', minifasError);
