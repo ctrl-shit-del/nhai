@@ -4,6 +4,15 @@ export type ConfidenceTier = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type LivenessChallenge = 'BLINK' | 'SMILE' | 'HEAD_LEFT' | 'HEAD_RIGHT';
 
+export interface SiteLocation {
+  /** WGS-84 latitude of the site centroid. */
+  lat: number;
+  /** WGS-84 longitude of the site centroid. */
+  lng: number;
+  /** Geofence radius in metres (default: GUARD_THRESHOLDS.gpsSiteRadiusM = 500). */
+  radiusM?: number;
+}
+
 export interface GUARDConfig {
   siteId: string;
   deviceId: string;
@@ -12,6 +21,11 @@ export interface GUARDConfig {
   recognitionThreshold?: number;
   requireSupervisorLivenessForEnrollment?: boolean;
   allowLowConfidenceCommit?: boolean;
+  /**
+   * Optional site geofence. When set, attendance commits are rejected with
+   * OUTSIDE_GEOFENCE if the GPS fix is more than radiusM metres from this point.
+   */
+  siteLocation?: SiteLocation;
 }
 
 export interface GUARDEngineProps {

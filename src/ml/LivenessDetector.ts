@@ -96,4 +96,26 @@ export class LivenessDetector {
   isComplete(session: LivenessSession): boolean {
     return !session.timedOut && session.activePassed && session.passivePassed;
   }
+
+  /**
+   * Evaluates passive liveness directly from a MiniFAS TFLite model spoof score.
+   *
+   * Use this instead of `evaluatePassive()` when MiniFAS inference runs via
+   * react-native-fast-tflite and returns `[spoof_prob, real_prob]` output tensors.
+   *
+   * @param session   The active-checked liveness session.
+   * @param spoofScore Normalised spoof probability where 0 = definitely real,
+   *                   1 = definitely spoofed (derived as `1 − scores[1]` from the model).
+   */
+  evaluatePassiveFromScore(session: LivenessSession, spoofScore: number): LivenessSession {
+    const timedOut     = Date.now() > session.expiresAt;
+    const passivePassed = !timedOut && spoofScore <= GUARD_THRESHOLDS.passiveSpoof;
+    return {
+      ...session,
+      timedOut,
+      spoofScore,
+      passivePassed,
+      completedAt: session.activePassed && passivePassed ? Date.now() : session.completedAt,
+    };
+  }
 }
