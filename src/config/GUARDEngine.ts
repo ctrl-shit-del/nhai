@@ -30,9 +30,9 @@ const MINIFAS_INPUT_SIZE = 80;
 
 /** Loaded TFLite model instances exposed to screens for frame-processor use. */
 export interface GUARDModels {
-  blazeface:      TensorflowModel | null;
-  mobilefacenet:  TensorflowModel | null;
-  minifas:        TensorflowModel | null;
+  blazeface: TensorflowModel | null;
+  mobilefacenet: TensorflowModel | null;
+  minifas: TensorflowModel | null;
 }
 
 /**
@@ -46,12 +46,12 @@ export interface GUARDModels {
  *   3. Mount `guard.AttendanceScreen`, `guard.EnrollmentScreen`, etc.
  */
 export class GUARDEngine {
-  readonly preprocessor      = new CLAHEPreprocessor();
-  readonly faceEngine        = new FaceEngine();
-  readonly livenessDetector  = new LivenessDetector();
-  readonly embeddingStore    = new EmbeddingStore();
-  readonly merkleChain:       MerkleChain;
-  readonly syncEngine:        SyncEngine;
+  readonly preprocessor = new CLAHEPreprocessor();
+  readonly faceEngine = new FaceEngine();
+  readonly livenessDetector = new LivenessDetector();
+  readonly embeddingStore = new EmbeddingStore();
+  readonly merkleChain: MerkleChain;
+  readonly syncEngine: SyncEngine;
 
   /** TFLite model instances. Null until initialize() completes. */
   models: GUARDModels = { blazeface: null, mobilefacenet: null, minifas: null };
@@ -63,7 +63,7 @@ export class GUARDEngine {
     private readonly storage?: GuardStorage
   ) {
     this.merkleChain = new MerkleChain(config.siteId, config.deviceId);
-    this.syncEngine  = new SyncEngine(config, this.merkleChain);
+    this.syncEngine = new SyncEngine(config, this.merkleChain);
   }
 
   // ── Initialization ─────────────────────────────────────────────────────────
@@ -95,13 +95,18 @@ export class GUARDEngine {
    * rather than crashing the app. A console warning is emitted for each failure.
    */
   private async loadModels(): Promise<void> {
-    const prefix = Platform.OS === 'android' ? 'asset:///' : '';
-
-    const [blazefaceResult, mobilefacenetResult, minifasResult] = await Promise.allSettled([
-      loadTensorflowModel({ url: `${prefix}${MODEL_PATHS.blazeface}` }),
-      loadTensorflowModel({ url: `${prefix}${MODEL_PATHS.mobileFaceNet}` }),
-      loadTensorflowModel({ url: `${prefix}${MODEL_PATHS.miniFas}` }),
-    ]);
+    const [blazefaceResult, mobilefacenetResult, minifasResult] =
+      await Promise.allSettled([
+        loadTensorflowModel(
+          require('../../android/app/src/main/assets/models/blazeface.tflite')
+        ),
+        loadTensorflowModel(
+          require('../../android/app/src/main/assets/models/mobilefacenet.tflite')
+        ),
+        loadTensorflowModel(
+          require('../../android/app/src/main/assets/models/minifas.tflite')
+        ),
+      ]);
 
     const getModel = (result: PromiseSettledResult<TensorflowModel>, name: string): TensorflowModel | null => {
       if (result.status === 'fulfilled') return result.value;
@@ -110,9 +115,9 @@ export class GUARDEngine {
     };
 
     this.models = {
-      blazeface:     getModel(blazefaceResult,      'BlazeFace'),
-      mobilefacenet: getModel(mobilefacenetResult,  'MobileFaceNet'),
-      minifas:       getModel(minifasResult,         'MiniFAS'),
+      blazeface: getModel(blazefaceResult, 'BlazeFace'),
+      mobilefacenet: getModel(mobilefacenetResult, 'MobileFaceNet'),
+      minifas: getModel(minifasResult, 'MiniFAS'),
     };
 
     // Inject models into subsystems that need them
@@ -127,11 +132,11 @@ export class GUARDEngine {
     this.assertReady();
     const livenessSession = this.livenessDetector.createSession(`supervisor:${supervisorId}:${Date.now()}`);
     return {
-      id:             `enroll_${supervisorId}_${Date.now()}`,
+      id: `enroll_${supervisorId}_${Date.now()}`,
       supervisorId,
       livenessSession,
-      authorized:     !this.config.requireSupervisorLivenessForEnrollment,
-      startedAt:      Date.now(),
+      authorized: !this.config.requireSupervisorLivenessForEnrollment,
+      startedAt: Date.now(),
     };
   }
 
@@ -167,8 +172,8 @@ export class GUARDEngine {
     const embeddings: number[][] = [];
 
     for (const sample of samples.slice(0, 3)) {
-      const frame   = this.preprocessor.preprocess(sample);
-      const face    = await this.faceEngine.detectFace(frame);
+      const frame = this.preprocessor.preprocess(sample);
+      const face = await this.faceEngine.detectFace(frame);
       const quality = this.faceEngine.assessQuality(face);
       if (!face || !quality.accepted) {
         throw new Error(`Enrollment sample rejected: ${quality.reasons.join(',') || 'UNKNOWN'}`);
@@ -216,7 +221,7 @@ export class GUARDEngine {
     const processed = this.preprocessor.preprocess(frame);
 
     // ── 3. Face detection + quality gate ──────────────────────────────────
-    const face    = await this.faceEngine.detectFace(processed);
+    const face = await this.faceEngine.detectFace(processed);
     const quality = this.faceEngine.assessQuality(face);
     if (!face || !quality.accepted) {
       throw new Error(`Face quality rejected: ${quality.reasons.join(',') || 'UNKNOWN'}`);
@@ -231,28 +236,28 @@ export class GUARDEngine {
     } else {
       // Self-contained path: auto-complete active challenges, then run passive
       let session = this.livenessDetector.createSession();
-      session     = this.livenessDetector.evaluateActive(session, session.challenges);
-      liveness    = await this.evaluatePassiveLiveness(session, processed, face);
+      session = this.livenessDetector.evaluateActive(session, session.challenges);
+      liveness = await this.evaluatePassiveLiveness(session, processed, face);
     }
 
     if (!this.livenessDetector.isComplete(liveness)) {
       this.merkleChain.appendSpoofIncident({
-        siteId:            this.config.siteId,
-        deviceId:          this.config.deviceId,
-        timestamp:         Date.now(),
+        siteId: this.config.siteId,
+        deviceId: this.config.deviceId,
+        timestamp: Date.now(),
         livenessSessionId: liveness.id,
-        spoofScore:        liveness.spoofScore,
+        spoofScore: liveness.spoofScore,
       });
       await this.persistChain();
       return {
-        status:          'REVIEW_REQUIRED',
+        status: 'REVIEW_REQUIRED',
         livenessSession: liveness,
-        reason:          liveness.timedOut ? 'LIVENESS_TIMEOUT' : 'LIVENESS_FAILED',
+        reason: liveness.timedOut ? 'LIVENESS_TIMEOUT' : 'LIVENESS_FAILED',
       };
     }
 
     // ── 5. Face embedding + recognition ───────────────────────────────────
-    const embedding  = await this.faceEngine.generateEmbedding(processed, face);
+    const embedding = await this.faceEngine.generateEmbedding(processed, face);
     const recognition = this.faceEngine.match(embedding, this.config.recognitionThreshold);
     if (!recognition) {
       throw new Error('No enrolled worker matched recognition threshold.');
@@ -264,8 +269,8 @@ export class GUARDEngine {
 
     // ── 6. Merkle-chain append ─────────────────────────────────────────────
     const record = this.merkleChain.appendAttendance({
-      siteId:            this.config.siteId,
-      deviceId:          this.config.deviceId,
+      siteId: this.config.siteId,
+      deviceId: this.config.deviceId,
       recognition,
       livenessSessionId: liveness.id,
       gps,
@@ -273,7 +278,7 @@ export class GUARDEngine {
     await this.persistChain();
 
     return {
-      status:          record.reviewRequired ? 'REVIEW_REQUIRED' : 'COMMITTED',
+      status: record.reviewRequired ? 'REVIEW_REQUIRED' : 'COMMITTED',
       record,
       recognition,
       livenessSession: liveness,
@@ -292,7 +297,7 @@ export class GUARDEngine {
     if (this.models.minifas) {
       try {
         // Crop detected face to 80×80, normalise to [0, 1] for MiniFAS
-        const input  = cropAndNormalize(frame, face, MINIFAS_INPUT_SIZE, 0, 1);
+        const input = cropAndNormalize(frame, face, MINIFAS_INPUT_SIZE, 0, 1);
         const output = await this.models.minifas.run([input]);
         const scores = output[0] as Float32Array;
         // scores = [real_prob, print_prob, replay_prob]
@@ -310,15 +315,15 @@ export class GUARDEngine {
 
   getStats() {
     return {
-      isReady:         this.ready,
-      chainLength:     this.merkleChain.getLength(),
+      isReady: this.ready,
+      chainLength: this.merkleChain.getLength(),
       enrolledWorkers: this.faceEngine.getEnrollmentCount(),
       unsyncedRecords: this.merkleChain.getUnsyncedAttendance().length,
-      integrity:       this.merkleChain.verifyIntegrity(),
+      integrity: this.merkleChain.verifyIntegrity(),
       modelsLoaded: {
-        blazeface:     this.models.blazeface !== null,
+        blazeface: this.models.blazeface !== null,
         mobilefacenet: this.models.mobilefacenet !== null,
-        minifas:       this.models.minifas !== null,
+        minifas: this.models.minifas !== null,
       },
     };
   }
@@ -347,7 +352,7 @@ export class GUARDEngine {
   private async persistChain(): Promise<void> {
     await this.storage?.saveChain({
       attendanceRecords: this.merkleChain.getAttendanceRecords(),
-      spoofIncidents:    this.merkleChain.getSpoofIncidents(),
+      spoofIncidents: this.merkleChain.getSpoofIncidents(),
     });
   }
 }

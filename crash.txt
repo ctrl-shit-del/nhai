@@ -1,0 +1,234 @@
+--------- beginning of main
+06-01 02:51:23.542 16644 16644 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=false callback=android.view.ViewRootImpl$$ExternalSyntheticLambda14@8733afc
+06-01 02:51:23.546 16644 16664 D Surface : Surface::disconnect
+06-01 02:51:23.546 16644 16664 D BufferQueueProducer: [PopupWindow:a48e5c9#2516(BLAST Consumer)pid:16644](id:410400000002,api:1,p:16644,c:16644) disconnect: api 1
+--------- beginning of system
+06-01 02:51:23.548  3090  6478 D PowerManagerService: nativeSetPowerMode ret:false mode:5 enabled:false duration ms: 0
+06-01 02:51:23.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:23.609  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:23.609  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1511.878052, hir  0
+06-01 02:51:23.756  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.127 old: 0 new: 0
+06-01 02:51:23.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:23.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:23.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.309937, hir  0
+06-01 02:51:23.865  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519a went down
+06-01 02:51:23.865  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519a went down
+06-01 02:51:23.867  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519b went down
+06-01 02:51:23.867  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519b went down
+06-01 02:51:23.869  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519c went down
+06-01 02:51:23.869  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519c went down
+06-01 02:51:23.871  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519d went down
+06-01 02:51:23.871  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519d went down
+06-01 02:51:24.009  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:24.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:24.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1510.232056, hir  0
+06-01 02:51:24.089  5862 16398 I NearbyMediums: No BLE Fast/GATT advertisements found in the latest cycle.
+06-01 02:51:24.090  5862 16398 I NearbyMediums: Current Tracked Scanning Clients are : {NearbyConnections.EnvironmentMonitor, NearbySharing}
+06-01 02:51:24.209  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:24.209  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:24.209  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1522.705688, hir  0
+06-01 02:51:24.240 15725 15778 E msys    : E[N mns:TigonMNS]_LogError(289)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+06-01 02:51:24.246 15725 15778 E msys    : E[N mns:TigonMNS]_LogError(289)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+06-01 02:51:24.390  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+06-01 02:51:24.390  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK ON
+06-01 02:51:24.390  2149  5984 D vendor.qti.bluetooth@1.1-wake_lock: Acquire wakelock is acquired 
+06-01 02:51:24.391  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+06-01 02:51:24.401  5862 10120 I NearbyDiscovery: (REDACTED) BloomFilterAdvManager: Detected bloom filter but too far away, ignoring. %sm, %s
+06-01 02:51:24.409  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:24.409  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:24.410  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1512.163940, hir  0
+06-01 02:51:24.432  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+06-01 02:51:24.432  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK OFF
+06-01 02:51:24.583  2149  5918 D vendor.qti.bluetooth@1.1-wake_lock: Release wakelock is released 
+06-01 02:51:24.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:24.609  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:24.610  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1508.122925, hir  0
+06-01 02:51:24.665  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519e went down
+06-01 02:51:24.665  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519e went down
+06-01 02:51:24.666  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519f went down
+06-01 02:51:24.666  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 519f went down
+06-01 02:51:24.667  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a0 went down
+06-01 02:51:24.668  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a0 went down
+06-01 02:51:24.670  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a2 went down
+06-01 02:51:24.670  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a2 went down
+06-01 02:51:24.670  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a3 went down
+06-01 02:51:24.671  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a3 went down
+06-01 02:51:24.673  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a4 went down
+06-01 02:51:24.673  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a4 went down
+06-01 02:51:24.757  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.127 old: 0 new: 0
+06-01 02:51:24.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:24.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:24.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1515.073608, hir  0
+06-01 02:51:24.965  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a6 went down
+06-01 02:51:24.966  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a6 went down
+06-01 02:51:24.970  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a7 went down
+06-01 02:51:24.970  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a7 went down
+06-01 02:51:24.974  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a8 went down
+06-01 02:51:24.975  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a8 went down
+06-01 02:51:24.978  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a9 went down
+06-01 02:51:24.978  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a9 went down
+06-01 02:51:25.009  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:25.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:25.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.266846, hir  0
+06-01 02:51:25.209  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:25.209  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:25.209  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1511.481567, hir  0
+06-01 02:51:25.409  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:25.409  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:25.409  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.568726, hir  0
+06-01 02:51:25.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:25.609  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:25.609  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1527.334839, hir  0
+06-01 02:51:25.710  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+06-01 02:51:25.710  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK ON
+06-01 02:51:25.710  2149  5984 D vendor.qti.bluetooth@1.1-wake_lock: Acquire wakelock is acquired 
+06-01 02:51:25.710  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+06-01 02:51:25.716  5862 16830 I NearbyDiscovery: (REDACTED) loadFastPairModule: checkFeaturesAreAvailable:%d
+06-01 02:51:25.717  5862 16830 I NearbyDiscovery: loadFastPairModule: FastPair module is downloaded. [CONTEXT service_id=265 ]
+06-01 02:51:25.752  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+06-01 02:51:25.752  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK OFF
+06-01 02:51:25.762  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.125 old: 0 new: 0
+06-01 02:51:25.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:25.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:25.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1523.839844, hir  0
+06-01 02:51:25.866  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a1 went down
+06-01 02:51:25.867  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a1 went down
+06-01 02:51:25.867  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a5 went down
+06-01 02:51:25.867  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51a5 went down
+06-01 02:51:25.903  2149  5918 D vendor.qti.bluetooth@1.1-wake_lock: Release wakelock is released 
+06-01 02:51:26.009  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:26.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:26.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1554.514160, hir  0
+06-01 02:51:26.065  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51aa went down
+06-01 02:51:26.066  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51aa went down
+06-01 02:51:26.068  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ab went down
+06-01 02:51:26.068  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ab went down
+06-01 02:51:26.070  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ac went down
+06-01 02:51:26.070  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ac went down
+06-01 02:51:26.071  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ad went down
+06-01 02:51:26.072  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ad went down
+06-01 02:51:26.209  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:26.209  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:26.209  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1506.551392, hir  0
+06-01 02:51:26.409  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:26.409  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:26.409  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1509.618774, hir  0
+06-01 02:51:26.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:26.609  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:26.609  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.287598, hir  0
+06-01 02:51:26.767  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.125 old: 0 new: 0
+06-01 02:51:26.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:26.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:26.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1526.481567, hir  0
+06-01 02:51:27.009  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:27.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:27.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1512.466064, hir  0
+06-01 02:51:27.023  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+06-01 02:51:27.023  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK ON
+06-01 02:51:27.023  2149  5984 D vendor.qti.bluetooth@1.1-wake_lock: Acquire wakelock is acquired 
+06-01 02:51:27.023  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+06-01 02:51:27.030  5862 10120 I NearbyDiscovery: (REDACTED) BloomFilterAdvManager: Detected bloom filter but too far away, ignoring. %sm, %s
+06-01 02:51:27.064  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+06-01 02:51:27.064  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK OFF
+06-01 02:51:27.166  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ae went down
+06-01 02:51:27.166  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ae went down
+06-01 02:51:27.168  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51af went down
+06-01 02:51:27.168  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51af went down
+06-01 02:51:27.169  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b0 went down
+06-01 02:51:27.170  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b0 went down
+06-01 02:51:27.173  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b1 went down
+06-01 02:51:27.173  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b1 went down
+06-01 02:51:27.209  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:27.209  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:27.209  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1512.163940, hir  0
+06-01 02:51:27.214  2149  5918 D vendor.qti.bluetooth@1.1-wake_lock: Release wakelock is released 
+06-01 02:51:27.409  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:27.409  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:27.409  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1531.445679, hir  0
+06-01 02:51:27.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:27.610  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:27.610  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.284424, hir  0
+06-01 02:51:27.661  2352 10049 I QC2Comp : [avcD_34] Stats: Pending(6) i/p-done(2) Works: Q: 74857/Done 74852|Work-Rate: Q(0.0/s Avg=6.4/s) Done(0.000/s Avg=6.366/s)| Stream: 60.00fps 267.4Kbps
+06-01 02:51:27.661  2352 10049 I QC2Comp : [avcD_34] Mem-usage:  [In-1D: 65 bufs 822.656 MB] [1D-21: 16 bufs 0.250 MB] [2D-22: 20 bufs 63.750 MB] | Total: 886.656 MB
+06-01 02:51:27.772  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.116 old: 0 new: 0
+06-01 02:51:27.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:27.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:27.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.471313, hir  0
+06-01 02:51:28.009  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:28.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:28.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1507.474731, hir  0
+06-01 02:51:28.209  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:28.209  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:28.209  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1511.606323, hir  0
+06-01 02:51:28.265  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b2 went down
+06-01 02:51:28.265  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b2 went down
+06-01 02:51:28.267  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b3 went down
+06-01 02:51:28.268  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b3 went down
+06-01 02:51:28.269  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b4 went down
+06-01 02:51:28.269  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b4 went down
+06-01 02:51:28.272  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b5 went down
+06-01 02:51:28.272  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b5 went down
+06-01 02:51:28.409  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:28.409  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:28.409  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1506.611694, hir  0
+06-01 02:51:28.520  3090  6478 D PowerManagerService: nativeSetPowerMode ret:false mode:5 enabled:true duration ms: 0
+06-01 02:51:28.529  3090  6478 D CoreBackPreview: Window{ea41a25 u0 PopupWindow:2fe4f00}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@84ed008, mPriority=0, mIsAnimationCallback=false, mOverrideBehavior=0}
+06-01 02:51:28.549 16644 16644 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=false callback=android.view.ViewRootImpl$$ExternalSyntheticLambda14@9d602df
+06-01 02:51:28.550 16644 16664 D Surface : Surface::disconnect
+06-01 02:51:28.550 16644 16664 D BufferQueueProducer: [PopupWindow:2fe4f00#2518(BLAST Consumer)pid:16644](id:410400000003,api:1,p:16644,c:16644) disconnect: api 1
+06-01 02:51:28.551  3090  6478 D CoreBackPreview: Window{ea41a25 u0 PopupWindow:2fe4f00}: Setting back callback null
+06-01 02:51:28.552  3090  8030 D PowerManagerService: nativeSetPowerMode ret:false mode:5 enabled:false duration ms: 0
+06-01 02:51:28.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:28.609  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:28.609  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1526.567017, hir  0
+06-01 02:51:28.702  3090  3197 W ActivityManager: Rescheduling restart of crashed service com.android.settings/.SettingsDumpService in 84165818ms for mem-pressure-event, crashCount = 0, earliestRestartTime = 96036485
+06-01 02:51:28.766  3090  4726 D PowerManagerService: nativeAcquireSuspendBlocker name:PowerManagerService.WakeLocks duration ms: 3
+06-01 02:51:28.769  3090  4655 D PowerManagerService: nativeReleaseSuspendBlocker name:PowerManagerService.WakeLocks duration ms: 0
+06-01 02:51:28.773  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.116 old: 0 new: 0
+06-01 02:51:28.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:28.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:28.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1509.286743, hir  0
+06-01 02:51:29.009  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:29.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:29.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1514.209717, hir  0
+06-01 02:51:29.061  1479 16565 I keystore2: system/security/keystore2/watchdog/src/lib.rs:377 - Watchdog thread idle -> terminating. Have a great day.
+06-01 02:51:29.209  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:29.209  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:29.209  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1507.983887, hir  0
+06-01 02:51:29.370  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b6 went down
+06-01 02:51:29.370  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b6 went down
+06-01 02:51:29.372  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b7 went down
+06-01 02:51:29.372  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b7 went down
+06-01 02:51:29.374  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b8 went down
+06-01 02:51:29.374  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b8 went down
+06-01 02:51:29.376  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b9 went down
+06-01 02:51:29.376  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51b9 went down
+06-01 02:51:29.409  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:29.409  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:29.409  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1506.726685, hir  0
+06-01 02:51:29.609  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:29.609  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:29.609  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1511.481567, hir  0
+06-01 02:51:29.775  2207  2207 I android.hardware.thermal@2.0-service.qti-v2: sensor: back_temp temperature: 39.111 old: 0 new: 0
+06-01 02:51:29.809  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:29.809  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:29.809  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1511.753052, hir  0
+06-01 02:51:29.970  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ba went down
+06-01 02:51:29.970  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51ba went down
+06-01 02:51:29.972  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51bb went down
+06-01 02:51:29.972  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51bb went down
+06-01 02:51:29.974  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51bc went down
+06-01 02:51:29.974  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51bc went down
+06-01 02:51:29.976  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51be went down
+06-01 02:51:29.976  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51be went down
+06-01 02:51:29.978  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51bf went down
+06-01 02:51:29.978  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51bf went down
+06-01 02:51:29.986  2129  2215 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51c0 went down
+06-01 02:51:29.986  2129  2221 E minksocket: MinkIPC_QRTR_Service: client with node 1 port 51c0 went down
+06-01 02:51:30.006  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+06-01 02:51:30.006  2149  5984 D vendor.qti.bluetooth@1.1-ibs_handler: SerialClockVote: vote for UART CLK ON
+06-01 02:51:30.006  2149  5984 D vendor.qti.bluetooth@1.1-wake_lock: Acquire wakelock is acquired 
+06-01 02:51:30.006  2149  5984 I vendor.qti.bluetooth@1.1-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+06-01 02:51:30.008  2140  4651 D slpi    : TCS3408 get_lux_cct coeff :c_coef 0, r:0, g:0 b:0 dgf:850, mode is 32373  atime:99.999382 again:2048.000000
+06-01 02:51:30.009  2140  4651 D slpi    : TCS3408_GET_DATA lux===0,lux_scale*1000 = 949 atime:99.999382 again:2048.000000 
+06-01 02:51:30.009  2140  4651 D slpi    : TCS3408_GET_DATA rgb  1505.728149, hir  0
