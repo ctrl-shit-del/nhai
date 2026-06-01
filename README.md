@@ -179,6 +179,46 @@ Run iOS after installing pods:
 npx react-native run-ios
 ```
 
+## Troubleshooting (Windows)
+
+If Android builds fail with a Windows file lock error while extracting TFLite AARs
+or Metro crashes watching temporary CMake files, use the steps below.
+
+Stop Gradle daemons and clear the locked TFLite cache:
+
+```sh
+cd android
+./gradlew --stop
+```
+
+Then remove the cached TFLite artifacts and the generated native lib folder:
+
+```sh
+rmdir /s /q "%USERPROFILE%\\.gradle\\caches\\modules-2\\files-2.1\\com.google.ai.edge.litert"
+rmdir /s /q "node_modules\\react-native-fast-tflite\\android\\src\\main\\cpp\\lib"
+```
+
+Rebuild:
+
+```sh
+cd android
+./gradlew clean
+cd ..
+npx react-native run-android
+```
+
+If the file lock persists, temporarily disable real-time antivirus scanning or
+add the project folder to Windows Defender exclusions during the build.
+
+If you see a keychain warning at runtime, ensure the native module is linked
+and rebuild:
+
+```sh
+npx react-native link react-native-keychain
+cd android
+./gradlew clean
+```
+
 ## Demo Walkthrough
 
 Use this sequence for a professional demo:

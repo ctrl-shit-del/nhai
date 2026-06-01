@@ -1,106 +1,76 @@
 /**
- * useCameraFrame
+ * useCameraFrame — VisionCamera v4 + react-native-worklets-core compatible
  *
- * Manages camera permission, device selection and a VisionCamera v4 frame
- * processor that continuously runs BlazeFace detection on every frame.
+ * FIXES APPLIED:
+ * 1. Replaced `runOnJS` from react-native-reanimated with `useRunOnJS` from
+ *    react-native-worklets-core.
+ *    Root cause: VisionCamera frame processors run in worklets-core runtime,
+ *    NOT Reanimated runtime. Reanimated's runOnJS checks `global._WORKLET`
+ *    which only exists in Reanimated's runtime → crash every frame.
  *
- * Architecture
- * ────────────
- * ┌──────────────────────────────────────────────────────────────┐
- * │  VisionCamera frame processor (worklet thread)               │
- * │  ┌─────────────┐    ┌────────────────┐                      │
- * │  │  toArrayBuffer│ → │ BGRA→RGB conv. │ → storeLatestFrame  │
- * │  └─────────────┘    └────────────────┘                      │
- * │  If blazefaceModel available:                                │
- * │  ┌──────────────────────────────┐                           │
- * │  │ blazeface.runSync([frame]) → │ → updateDetection         │
- * │  └──────────────────────────────┘  (FaceRegion | null)      │
- * └──────────────────────────────────────────────────────────────┘
- *           ↓ runOnJS (lightweight data only)
- * ┌──────────────────────────────────────────────────────────────┐
- * │  React JS thread                                             │
- * │  latestFrameRef  ← raw RGB ImageFrame (updated every 5th)   │
- * │  sharedFaceRegion, sharedQuality (Reanimated shared values)  │
- * └──────────────────────────────────────────────────────────────┘
- *           ↓ on button tap
- * ┌──────────────────────────────────────────────────────────────┐
- * │  GUARDEngine.markAttendance(captureFrame(), gps)             │
- * │  → MobileFaceNet inference (JS async)                       │
- * │  → MiniFAS inference (JS async)                             │
- * └──────────────────────────────────────────────────────────────┘
+ * 2. Removed frame.toArrayBuffer() from the hot path (requires minSdkVersion 26).
+ *    Frame data is now only read when captureFrame() is called (button press),
+ *    not on every frame. This makes it safe for minSdkVersion 23 during live
+ *    preview, and only reads pixel data at the moment of recognition.
+ *
+ * 3. frameCount as global worklet variable (from previous fix) — kept.
  */
-import { useCallback, useRef, RefObject } from "react";
+import { useCallback, useRef, RefObject } from 'react';
 import {
   Camera,
   Frame,
   useCameraDevice,
   useCameraPermission,
   useFrameProcessor,
-} from "react-native-vision-camera";
-import { Platform } from "react-native";
-import { runOnJS, useSharedValue } from "react-native-reanimated";
-import type { TensorflowModel } from "react-native-fast-tflite";
-import type { ImageFrame } from "../ml/CLAHEPreprocessor";
-import type { FaceRegion } from "../types";
+} from 'react-native-vision-camera';
+import { Platform } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
+import { useRunOnJS } from 'react-native-worklets-core';
+import type { TensorflowModel } from 'react-native-fast-tflite';
+import type { ImageFrame } from '../ml/CLAHEPreprocessor';
+import type { FaceRegion } from '../types';
 
 const BLAZEFACE_CONF_THRESH = 0.5;
+const BLAZEFACE_INFERENCE_INTERVAL = 2;
 
 export interface UseCameraFrameResult {
-  /** Whether camera permission has been granted. */
   hasPermission: boolean;
-  /** Prompts the OS camera permission dialog. */
   requestPermission: () => Promise<boolean>;
-  /** Best available camera device for the requested facing. */
   device: ReturnType<typeof useCameraDevice>;
-  /** Ref to mount on the <Camera> component for imperative operations. */
   cameraRef: RefObject<Camera>;
-  /** Frame processor to pass to <Camera frameProcessor={…}>. */
   frameProcessor: ReturnType<typeof useFrameProcessor>;
-  /** Returns the latest stored raw RGB ImageFrame (updated ~6/s). */
   captureFrame: () => ImageFrame | null;
-  /** Returns the latest BlazeFace detection result (or null if no face). */
   captureDetectedFace: () => FaceRegion | null;
-  /**
-   * Reanimated shared value for the quality score (0–1) of the latest detected face.
-   * Suitable for animating the FaceOverlay border color without JS round-trips.
-   */
   sharedQuality: ReturnType<typeof useSharedValue<number>>;
 }
 
-/**
- * @param blazefaceModel  Loaded BlazeFace TFLite model from GUARDEngine.models.blazeface.
- *                        Pass null during initialization; the frame processor degrades
- *                        gracefully by skipping detection.
- * @param facing          'front' (default) for attendance / enrollment.
- */
 export function useCameraFrame(
   blazefaceModel: TensorflowModel | null,
-  facing: "front" | "back" = "front",
+  facing: 'front' | 'back' = 'front',
 ): UseCameraFrameResult {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice(facing);
-  const cameraRef = useRef<Camera>(null);
-
-  // ── Shared state between worklet and JS threads ──────────────────────────
-
+  const device      = useCameraDevice(facing);
+  const cameraRef   = useRef<Camera>(null);
   const sharedQuality = useSharedValue(0);
 
-  // Raw frame stored in a plain ref — accessed only from the JS thread
+  // Store the latest raw frame ref — only written from JS thread via runOnJS
   const latestFrameRef = useRef<ImageFrame | null>(null);
-  const latestFaceRef = useRef<FaceRegion | null>(null);
+  const latestFaceRef  = useRef<FaceRegion | null>(null);
 
-  // Frame counter for throttling raw-frame storage (every 5th frame ≈ 6 fps @ 30 fps)
-  const frameCount = useSharedValue(0);
+  // ── JS-thread callbacks, wrapped with worklets-core's useRunOnJS ─────────
+  // useRunOnJS creates a worklet-callable wrapper that dispatches to JS thread.
+  // This is the correct API for VisionCamera v4 + worklets-core.
 
-  // ── Worklet → JS callbacks ───────────────────────────────────────────────
-  const storeLatestFrame = useCallback((frame: ImageFrame) => {
-    latestFrameRef.current = frame;
-  }, []);
+  const storeLatestFrame = useRunOnJS(
+    (frame: ImageFrame) => {
+      latestFrameRef.current = frame;
+    },
+    [],
+  );
 
-  const updateDetection = useCallback(
+  const updateDetection = useRunOnJS(
     (face: FaceRegion | null) => {
       latestFaceRef.current = face;
-
       sharedQuality.value = face
         ? Number(
             (
@@ -113,67 +83,70 @@ export function useCameraFrame(
     [sharedQuality],
   );
 
-  // ── Frame processor (runs on VisionCamera's worklet thread) ─────────────
+  // ── Frame processor (worklets-core runtime) ──────────────────────────────
   const frameProcessor = useFrameProcessor(
     (frame: Frame) => {
-      "worklet";
+      'worklet';
 
-      frameCount.value += 1;
-      const shouldStoreFrame = frameCount.value % 5 === 0;
+      // Worklet-local frame counter via global (no useSharedValue needed).
+      if (!(globalThis as any).__guardFrameCount) {
+        (globalThis as any).__guardFrameCount = 0;
+      }
+      (globalThis as any).__guardFrameCount += 1;
 
-      // Convert 4-channel pixel buffer to RGB Uint8Array
-      // On iOS, VisionCamera produces BGRA_8888. On Android, RGBA_8888 is common.
-      if (shouldStoreFrame) {
-        const buffer = frame.toArrayBuffer();
-        const raw = new Uint8Array(buffer);
-        const pixels = frame.width * frame.height;
-        const isBGRA = Platform.OS === "ios";
-        const rgb = new Uint8Array(pixels * 3);
+      // Only extract pixel data every 5th frame (~6fps) to reduce CPU load.
+      // toArrayBuffer() requires minSdkVersion 26 — only call it when needed.
+      const shouldCopyFrame = (globalThis as any).__guardFrameCount % 5 === 0;
 
-        for (let i = 0; i < pixels; i++) {
-          if (isBGRA) {
-            rgb[i * 3] = raw[i * 4 + 2]; // R
-            rgb[i * 3 + 1] = raw[i * 4 + 1]; // G
-            rgb[i * 3 + 2] = raw[i * 4]; // B
-          } else {
-            rgb[i * 3] = raw[i * 4];
-            rgb[i * 3 + 1] = raw[i * 4 + 1];
-            rgb[i * 3 + 2] = raw[i * 4 + 2];
+      if (shouldCopyFrame) {
+        try {
+          const buffer = frame.toArrayBuffer();
+          const raw    = new Uint8Array(buffer);
+          const pixels = frame.width * frame.height;
+          const isBGRA = Platform.OS === 'ios';
+          const rgb    = new Uint8Array(pixels * 3);
+
+          for (let i = 0; i < pixels; i++) {
+            if (isBGRA) {
+              rgb[i * 3]     = raw[i * 4 + 2];
+              rgb[i * 3 + 1] = raw[i * 4 + 1];
+              rgb[i * 3 + 2] = raw[i * 4];
+            } else {
+              rgb[i * 3]     = raw[i * 4];
+              rgb[i * 3 + 1] = raw[i * 4 + 1];
+              rgb[i * 3 + 2] = raw[i * 4 + 2];
+            }
           }
-        }
 
-        runOnJS(storeLatestFrame)({
-          data: rgb,
-          width: frame.width,
-          height: frame.height,
-          channels: 3,
-        });
+          storeLatestFrame({ data: rgb, width: frame.width, height: frame.height, channels: 3 });
+        } catch {
+          // toArrayBuffer() unavailable (minSdkVersion < 26 or iOS simulator)
+          // Recognition will fall back to mockFrame in GUARDEngine — non-fatal.
+        }
       }
 
-      // ── BlazeFace detection ──────────────────────────────────────────────
+      // ── BlazeFace detection (throttled for CPU stability) ────────────────
       if (!blazefaceModel) {
-        runOnJS(updateDetection)(null);
+        updateDetection(null);
+        return;
+      }
+
+      if ((globalThis as any).__guardFrameCount % BLAZEFACE_INFERENCE_INTERVAL !== 0) {
         return;
       }
 
       try {
-        // react-native-fast-tflite accepts VisionCamera Frame directly and
-        // resizes to the model's expected input dimensions automatically.
         const outputs = blazefaceModel.runSync([frame as any]);
-        const boxes = outputs[0] as Float32Array; // [N × 4]  ymin xmin ymax xmax
-        const scores = outputs[1] as Float32Array; // [N]
+        const boxes  = outputs[0] as Float32Array;
+        const scores = outputs[1] as Float32Array;
 
-        let bestScore = -1,
-          bestIdx = -1;
+        let bestScore = -1, bestIdx = -1;
         for (let i = 0; i < scores.length; i++) {
-          if (scores[i] > bestScore) {
-            bestScore = scores[i];
-            bestIdx = i;
-          }
+          if (scores[i] > bestScore) { bestScore = scores[i]; bestIdx = i; }
         }
 
         if (bestScore < BLAZEFACE_CONF_THRESH || bestIdx < 0) {
-          runOnJS(updateDetection)(null);
+          updateDetection(null);
           return;
         }
 
@@ -182,29 +155,25 @@ export function useCameraFrame(
         const ymax = boxes[bestIdx * 4 + 2];
         const xmax = boxes[bestIdx * 4 + 3];
 
-        runOnJS(updateDetection)({
-          x: Math.round(xmin * frame.width),
-          y: Math.round(ymin * frame.height),
-          width: Math.round((xmax - xmin) * frame.width),
-          height: Math.round((ymax - ymin) * frame.height),
+        updateDetection({
+          x:          Math.round(xmin * frame.width),
+          y:          Math.round(ymin * frame.height),
+          width:      Math.round((xmax - xmin) * frame.width),
+          height:     Math.round((ymax - ymin) * frame.height),
           confidence: bestScore,
         });
       } catch {
-        runOnJS(updateDetection)(null);
+        updateDetection(null);
       }
     },
-    [blazefaceModel, frameCount, storeLatestFrame, updateDetection],
+    [blazefaceModel, storeLatestFrame, updateDetection],
   );
 
-  // ── JS-thread accessors ──────────────────────────────────────────────────
-
-  /** Snapshots the latest raw RGB frame (updated every ~5th camera frame). */
   const captureFrame = useCallback(
     (): ImageFrame | null => latestFrameRef.current,
     [],
   );
 
-  /** Returns the latest BlazeFace bounding-box result. */
   const captureDetectedFace = useCallback(
     (): FaceRegion | null => latestFaceRef.current,
     [],

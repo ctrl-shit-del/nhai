@@ -126,6 +126,10 @@ export class GUARDEngine {
 
   isReady(): boolean { return this.ready; }
 
+  private async yieldToUI(): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+
   // ── Enrollment ─────────────────────────────────────────────────────────────
 
   beginEnrollmentSession(supervisorId: string): EnrollmentSession {
@@ -219,6 +223,7 @@ export class GUARDEngine {
 
     // ── 2. CLAHE preprocessing ────────────────────────────────────────────
     const processed = this.preprocessor.preprocess(frame);
+    await this.yieldToUI();
 
     // ── 3. Face detection + quality gate ──────────────────────────────────
     const face = await this.faceEngine.detectFace(processed);
@@ -226,6 +231,8 @@ export class GUARDEngine {
     if (!face || !quality.accepted) {
       throw new Error(`Face quality rejected: ${quality.reasons.join(',') || 'UNKNOWN'}`);
     }
+
+    await this.yieldToUI();
 
     // ── 4. Liveness check ─────────────────────────────────────────────────
     let liveness: LivenessSession;
@@ -239,6 +246,8 @@ export class GUARDEngine {
       session = this.livenessDetector.evaluateActive(session, session.challenges);
       liveness = await this.evaluatePassiveLiveness(session, processed, face);
     }
+
+    await this.yieldToUI();
 
     if (!this.livenessDetector.isComplete(liveness)) {
       this.merkleChain.appendSpoofIncident({

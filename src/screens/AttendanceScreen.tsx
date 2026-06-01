@@ -10,6 +10,8 @@ import type { AttendanceOutcome, GPSPoint, GUARDEngineProps, LivenessSession } f
 
 type AttendanceStatus = 'idle' | 'liveness' | 'processing' | 'success' | 'failed' | 'spoof';
 
+const yieldToUI = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 export function AttendanceScreen({ engine }: GUARDEngineProps) {
   const [status,          setStatus]          = useState<AttendanceStatus>('idle');
   const [livenessSession, setLivenessSession] = useState<LivenessSession | null>(null);
@@ -79,6 +81,7 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
 
     setStatus('processing');
     setMessage('Processing liveness and recognition…');
+    await yieldToUI();
 
     try {
       // Evaluate active challenge (user confirmed they performed the gesture)
@@ -86,6 +89,8 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
         livenessSession,
         livenessSession.challenges
       );
+
+      await yieldToUI();
 
       // Capture the latest camera frame for passive liveness + recognition
       const currentFrame = captureFrame();
