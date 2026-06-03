@@ -7,7 +7,12 @@ const config = {
   resolver: {
     assetExts: [...defaultConfig.resolver.assetExts, 'tflite'],
     blockList: exclusionList([
+      /android\/build\/.*/,
+      /ios\/build\/.*/,
+      /.*\/android\/build\/.*/,
+      /.*\/ios\/build\/.*/,
       /node_modules\/.*\/android\/\.cxx\/.*/,
+      /node_modules\/.*\/android\/build\/.*/,
     ]),
   },
 };

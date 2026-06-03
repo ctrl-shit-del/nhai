@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Camera } from 'react-native-vision-camera';
 
@@ -16,9 +16,13 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
   const [enrolled,         setEnrolled]         = useState(false);
   const [error,            setError]            = useState<string | null>(null);
   const [sampleMessage,    setSampleMessage]    = useState('Align face and tap Capture');
+  const [sampleCount,      setSampleCount]      = useState(0);
+  const [formFocused,      setFormFocused]      = useState(false);
 
   // Stored real camera frames — one per sample
-  const [capturedSamples, setCapturedSamples] = useState<ImageFrame[]>([]);
+  const samplesRef = useRef<ImageFrame[]>([]);
+
+  const detectionPaused = formFocused || enrolling || sampleCount >= 3;
 
   // ── Camera + frame processor ─────────────────────────────────────────────
   const {
@@ -30,7 +34,10 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
     captureFrame,
     captureDetectedFace,
     sharedQuality,
-  } = useCameraFrame(engine.models.blazeface, 'front');
+  } = useCameraFrame(engine.models.blazeface, 'front', {
+    detectEnabled: !detectionPaused,
+    inferenceThrottleMs: 300,
+  });
 
   // ── Camera permission request ─────────────────────────────────────────────
   useEffect(() => {
@@ -39,7 +46,7 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
 
   // ── Capture one face sample ───────────────────────────────────────────────
   const captureSample = useCallback(async () => {
-    if (capturedSamples.length >= 3) return;
+    if (sampleCount >= 3) return;
 
     setError(null);
 
@@ -59,19 +66,20 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
     }
 
     // Accept this frame as a valid sample
-    const updated = [...capturedSamples, currentFrame];
-    setCapturedSamples(updated);
+    samplesRef.current = [...samplesRef.current, currentFrame];
+    const nextCount = samplesRef.current.length;
+    setSampleCount(nextCount);
 
-    if (updated.length < 3) {
-      setSampleMessage(`Sample ${updated.length}/3 captured. Keep face steady.`);
+    if (nextCount < 3) {
+      setSampleMessage(`Sample ${nextCount}/3 captured. Keep face steady.`);
     } else {
       setSampleMessage('3 samples captured. Fill in details and tap Save Enrollment.');
     }
-  }, [capturedSamples, captureFrame, captureDetectedFace, engine]);
+  }, [sampleCount, captureFrame, captureDetectedFace, engine]);
 
   // ── Run full enrollment ───────────────────────────────────────────────────
   const saveEnrollment = useCallback(async () => {
-    if (capturedSamples.length < 3 || workerName.trim().length === 0) return;
+    if (samplesRef.current.length < 3 || workerName.trim().length === 0) return;
 
     setEnrolling(true);
     setError(null);
@@ -88,13 +96,14 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
 
       // engine.enrollWorker runs CLAHE preprocess → BlazeFace detect → quality check →
       // MobileFaceNet embed (3 samples) → average → privacyTransform → MMKV + in-memory store
-      await engine.enrollWorker(profile, capturedSamples);
+      await engine.enrollWorker(profile, samplesRef.current);
 
       // Reset form
       setWorkerName('');
       setLabourContractId('');
       setPpeNotes('');
-      setCapturedSamples([]);
+      samplesRef.current = [];
+      setSampleCount(0);
       setSampleMessage('Align face and tap Capture');
       setEnrolled(true);
     } catch (enrollError) {
@@ -102,11 +111,14 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
     } finally {
       setEnrolling(false);
     }
-  }, [capturedSamples, workerName, labourContractId, ppeNotes, engine]);
+  }, [workerName, labourContractId, ppeNotes, engine]);
 
-  const canCapture = capturedSamples.length < 3 && !enrolling;
-  const canSave    = capturedSamples.length === 3 && workerName.trim().length > 0 && !enrolling;
-  const prompt     = capturedSamples.length < 3 ? 'Align face within frame' : 'All samples captured';
+  const canCapture = sampleCount < 3 && !enrolling;
+  const canSave    = sampleCount === 3 && workerName.trim().length > 0 && !enrolling;
+  const prompt     = sampleCount < 3 ? 'Align face within frame' : 'All samples captured';
+
+  const handleFormFocus = useCallback(() => setFormFocused(true), []);
+  const handleFormBlur = useCallback(() => setFormFocused(false), []);
 
   return (
     <View style={styles.screen}>
@@ -119,13 +131,17 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
             device={device}
             isActive={!enrolled}
             frameProcessor={frameProcessor}
-            pixelFormat="rgb"
           />
         ) : (
           <Text style={styles.cameraLabel}>
             {hasPermission ? 'Loading camera…' : 'Camera permission required'}
           </Text>
         )}
+        {detectionPaused ? (
+          <View style={styles.pauseBadge}>
+            <Text style={styles.pauseBadgeText}>Detection paused</Text>
+          </View>
+        ) : null}
         <FaceOverlay prompt={prompt} />
       </View>
 
@@ -140,9 +156,9 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           {[1, 2, 3].map((n) => (
             <Text
               key={n}
-              style={[styles.sample, capturedSamples.length >= n ? styles.sampleAccepted : styles.samplePending]}
+              style={[styles.sample, sampleCount >= n ? styles.sampleAccepted : styles.samplePending]}
             >
-              {capturedSamples.length >= n ? `✓ S${n}` : `S${n}`}
+              {sampleCount >= n ? `✓ S${n}` : `S${n}`}
             </Text>
           ))}
         </View>
@@ -153,7 +169,7 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           onPress={captureSample}
         >
           <Text style={styles.secondaryButtonText}>
-            {capturedSamples.length >= 3 ? 'All Samples Captured' : `Capture Sample ${capturedSamples.length + 1}/3`}
+            {sampleCount >= 3 ? 'All Samples Captured' : `Capture Sample ${sampleCount + 1}/3`}
           </Text>
         </Pressable>
 
@@ -163,6 +179,8 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           style={styles.input}
           value={workerName}
           onChangeText={setWorkerName}
+          onFocus={handleFormFocus}
+          onBlur={handleFormBlur}
         />
         <TextInput
           placeholder="Labour contract ID (optional)"
@@ -170,6 +188,8 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           style={styles.input}
           value={labourContractId}
           onChangeText={setLabourContractId}
+          onFocus={handleFormFocus}
+          onBlur={handleFormBlur}
         />
         <TextInput
           placeholder="PPE notes (helmet, mask, etc.)"
@@ -177,6 +197,8 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           style={styles.input}
           value={ppeNotes}
           onChangeText={setPpeNotes}
+          onFocus={handleFormFocus}
+          onBlur={handleFormBlur}
         />
 
         <Pressable
@@ -211,6 +233,20 @@ const styles = StyleSheet.create({
   cameraLabel: {
     color:    '#9CA3AF',
     fontSize: 13
+  },
+  pauseBadge: {
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    position: 'absolute',
+    right: 12,
+    top: 12
+  },
+  pauseBadgeText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '700'
   },
   form: {
     flex:    1,
@@ -291,3 +327,5 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   }
 });
+
+ 

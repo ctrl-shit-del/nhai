@@ -44,9 +44,15 @@ export interface UseCameraFrameResult {
   sharedQuality: ReturnType<typeof useSharedValue<number>>;
 }
 
+export interface UseCameraFrameOptions {
+  detectEnabled?: boolean;
+  inferenceThrottleMs?: number;
+}
+
 export function useCameraFrame(
   blazefaceModel: TensorflowModel | null,
   facing: 'front' | 'back' = 'front',
+  options: UseCameraFrameOptions = {},
 ): UseCameraFrameResult {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device      = useCameraDevice(facing);
@@ -83,6 +89,8 @@ export function useCameraFrame(
     [sharedQuality],
   );
 
+  const { detectEnabled = true, inferenceThrottleMs = 0 } = options;
+
   // ── Frame processor (worklets-core runtime) ──────────────────────────────
   const frameProcessor = useFrameProcessor(
     (frame: Frame) => {
@@ -103,19 +111,17 @@ export function useCameraFrame(
           const buffer = frame.toArrayBuffer();
           const raw    = new Uint8Array(buffer);
           const pixels = frame.width * frame.height;
-          const isBGRA = Platform.OS === 'ios';
           const rgb    = new Uint8Array(pixels * 3);
 
+          // YUV (NV21/NV12) → RGB conversion
+          // Y plane is the first (width*height) bytes in most Android YUV formats
+          // For a quick approximation, use Y channel as greyscale RGB — sufficient
+          // for CLAHE + MobileFaceNet inference.
           for (let i = 0; i < pixels; i++) {
-            if (isBGRA) {
-              rgb[i * 3]     = raw[i * 4 + 2];
-              rgb[i * 3 + 1] = raw[i * 4 + 1];
-              rgb[i * 3 + 2] = raw[i * 4];
-            } else {
-              rgb[i * 3]     = raw[i * 4];
-              rgb[i * 3 + 1] = raw[i * 4 + 1];
-              rgb[i * 3 + 2] = raw[i * 4 + 2];
-            }
+            const y = raw[i];
+            rgb[i * 3]     = y;
+            rgb[i * 3 + 1] = y;
+            rgb[i * 3 + 2] = y;
           }
 
           storeLatestFrame({ data: rgb, width: frame.width, height: frame.height, channels: 3 });
@@ -126,13 +132,24 @@ export function useCameraFrame(
       }
 
       // ── BlazeFace detection (throttled for CPU stability) ────────────────
-      if (!blazefaceModel) {
+      if (!detectEnabled || !blazefaceModel) {
         updateDetection(null);
         return;
       }
 
       if ((globalThis as any).__guardFrameCount % BLAZEFACE_INFERENCE_INTERVAL !== 0) {
         return;
+      }
+
+      if (inferenceThrottleMs > 0) {
+        if (!(globalThis as any).__guardLastInferenceAt) {
+          (globalThis as any).__guardLastInferenceAt = 0;
+        }
+        const now = Date.now();
+        if (now - (globalThis as any).__guardLastInferenceAt < inferenceThrottleMs) {
+          return;
+        }
+        (globalThis as any).__guardLastInferenceAt = now;
       }
 
       try {
@@ -166,7 +183,7 @@ export function useCameraFrame(
         updateDetection(null);
       }
     },
-    [blazefaceModel, storeLatestFrame, updateDetection],
+    [blazefaceModel, detectEnabled, inferenceThrottleMs, storeLatestFrame, updateDetection],
   );
 
   const captureFrame = useCallback(

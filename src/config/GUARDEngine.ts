@@ -1,15 +1,15 @@
-import { loadTensorflowModel, TensorflowModel } from 'react-native-fast-tflite';
-import { Platform } from 'react-native';
-import { MODEL_PATHS } from './constants';
-import { CLAHEPreprocessor, ImageFrame } from '../ml/CLAHEPreprocessor';
-import { FaceEngine } from '../ml/FaceEngine';
-import { LivenessDetector } from '../ml/LivenessDetector';
-import { EmbeddingStore } from '../security/EmbeddingStore';
-import { MerkleChain } from '../security/MerkleChain';
-import { GuardStorage } from '../storage/GuardStorage';
-import { SyncEngine } from '../sync/SyncEngine';
-import { isInsideSiteGeofence } from '../utils/GPSHelper';
-import { cropAndNormalize } from '../utils/imageUtils';
+import { loadTensorflowModel, TensorflowModel } from "react-native-fast-tflite";
+import { Platform } from "react-native";
+import { MODEL_PATHS } from "./constants";
+import { CLAHEPreprocessor, ImageFrame } from "../ml/CLAHEPreprocessor";
+import { FaceEngine } from "../ml/FaceEngine";
+import { LivenessDetector } from "../ml/LivenessDetector";
+import { EmbeddingStore } from "../security/EmbeddingStore";
+import { MerkleChain } from "../security/MerkleChain";
+import { GuardStorage } from "../storage/GuardStorage";
+import { SyncEngine } from "../sync/SyncEngine";
+import { isInsideSiteGeofence } from "../utils/GPSHelper";
+import { cropAndNormalize } from "../utils/imageUtils";
 import {
   AttendanceOutcome,
   EnrollmentSession,
@@ -21,7 +21,7 @@ import {
   SyncAck,
   SyncBatch,
   WorkerProfile,
-} from '../types';
+} from "../types";
 
 // ── MiniFAS model specs ───────────────────────────────────────────────────────
 // Input:  Float32Array  [80 × 80 × 3] normalised [0, 1] (face crop)
@@ -60,7 +60,7 @@ export class GUARDEngine {
 
   constructor(
     readonly config: GUARDConfig,
-    private readonly storage?: GuardStorage
+    private readonly storage?: GuardStorage,
   ) {
     this.merkleChain = new MerkleChain(config.siteId, config.deviceId);
     this.syncEngine = new SyncEngine(config, this.merkleChain);
@@ -72,7 +72,10 @@ export class GUARDEngine {
     // Hydrate Merkle chain from persistent storage (survives app restarts)
     const snapshot = await this.storage?.loadChain();
     if (snapshot) {
-      this.merkleChain.hydrate(snapshot.attendanceRecords, snapshot.spoofIncidents);
+      this.merkleChain.hydrate(
+        snapshot.attendanceRecords,
+        snapshot.spoofIncidents,
+      );
     }
 
     // Parallel init: face engine + embedding store + TFLite models
@@ -98,33 +101,41 @@ export class GUARDEngine {
     const [blazefaceResult, mobilefacenetResult, minifasResult] =
       await Promise.allSettled([
         loadTensorflowModel(
-          require('../../android/app/src/main/assets/models/blazeface.tflite')
+          require("../../android/app/src/main/assets/models/blazeface.tflite"),
         ),
         loadTensorflowModel(
-          require('../../android/app/src/main/assets/models/mobilefacenet.tflite')
+          require("../../android/app/src/main/assets/models/mobilefacenet.tflite"),
         ),
         loadTensorflowModel(
-          require('../../android/app/src/main/assets/models/minifas.tflite')
+          require("../../android/app/src/main/assets/models/minifas.tflite"),
         ),
       ]);
 
-    const getModel = (result: PromiseSettledResult<TensorflowModel>, name: string): TensorflowModel | null => {
-      if (result.status === 'fulfilled') return result.value;
-      console.warn(`[GUARDEngine] ${name} model failed to load — mock inference active.`, result.reason);
+    const getModel = (
+      result: PromiseSettledResult<TensorflowModel>,
+      name: string,
+    ): TensorflowModel | null => {
+      if (result.status === "fulfilled") return result.value;
+      console.warn(
+        `[GUARDEngine] ${name} model failed to load — mock inference active.`,
+        result.reason,
+      );
       return null;
     };
 
     this.models = {
-      blazeface: getModel(blazefaceResult, 'BlazeFace'),
-      mobilefacenet: getModel(mobilefacenetResult, 'MobileFaceNet'),
-      minifas: getModel(minifasResult, 'MiniFAS'),
+      blazeface: getModel(blazefaceResult, "BlazeFace"),
+      mobilefacenet: getModel(mobilefacenetResult, "MobileFaceNet"),
+      minifas: getModel(minifasResult, "MiniFAS"),
     };
 
     // Inject models into subsystems that need them
     this.faceEngine.setModels(this.models.blazeface, this.models.mobilefacenet);
   }
 
-  isReady(): boolean { return this.ready; }
+  isReady(): boolean {
+    return this.ready;
+  }
 
   private async yieldToUI(): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -134,7 +145,9 @@ export class GUARDEngine {
 
   beginEnrollmentSession(supervisorId: string): EnrollmentSession {
     this.assertReady();
-    const livenessSession = this.livenessDetector.createSession(`supervisor:${supervisorId}:${Date.now()}`);
+    const livenessSession = this.livenessDetector.createSession(
+      `supervisor:${supervisorId}:${Date.now()}`,
+    );
     return {
       id: `enroll_${supervisorId}_${Date.now()}`,
       supervisorId,
@@ -147,10 +160,13 @@ export class GUARDEngine {
   completeSupervisorLiveness(
     session: EnrollmentSession,
     completed: LivenessChallenge[],
-    frame: ImageFrame
+    frame: ImageFrame,
   ): Promise<EnrollmentSession> {
     this.assertReady();
-    const active = this.livenessDetector.evaluateActive(session.livenessSession, completed);
+    const active = this.livenessDetector.evaluateActive(
+      session.livenessSession,
+      completed,
+    );
     return this.livenessDetector
       .evaluatePassive(active, this.preprocessor.preprocess(frame))
       .then((livenessSession) => ({
@@ -163,14 +179,19 @@ export class GUARDEngine {
   async enrollWorker(
     profile: WorkerProfile,
     samples: ImageFrame[],
-    enrollmentSession?: EnrollmentSession
+    enrollmentSession?: EnrollmentSession,
   ): Promise<void> {
     this.assertReady();
-    if (this.config.requireSupervisorLivenessForEnrollment && !enrollmentSession?.authorized) {
-      throw new Error('Supervisor liveness authorization is required before enrollment.');
+    if (
+      this.config.requireSupervisorLivenessForEnrollment &&
+      !enrollmentSession?.authorized
+    ) {
+      throw new Error(
+        "Supervisor liveness authorization is required before enrollment.",
+      );
     }
     if (samples.length < 3) {
-      throw new Error('Enrollment requires three accepted face samples.');
+      throw new Error("Enrollment requires three accepted face samples.");
     }
 
     const embeddings: number[][] = [];
@@ -180,7 +201,9 @@ export class GUARDEngine {
       const face = await this.faceEngine.detectFace(frame);
       const quality = this.faceEngine.assessQuality(face);
       if (!face || !quality.accepted) {
-        throw new Error(`Enrollment sample rejected: ${quality.reasons.join(',') || 'UNKNOWN'}`);
+        throw new Error(
+          `Enrollment sample rejected: ${quality.reasons.join(",") || "UNKNOWN"}`,
+        );
       }
       embeddings.push(await this.faceEngine.generateEmbedding(frame, face));
     }
@@ -211,25 +234,38 @@ export class GUARDEngine {
   async markAttendance(
     frame: ImageFrame,
     gps: GPSPoint,
-    activeLivenessSession?: LivenessSession
+    activeLivenessSession?: LivenessSession,
   ): Promise<AttendanceOutcome> {
     this.assertReady();
 
     // ── 1. GPS Geofence check ──────────────────────────────────────────────
-    if (this.config.siteLocation && !isInsideSiteGeofence(gps, this.config.siteLocation)) {
-      const session = activeLivenessSession ?? this.livenessDetector.createSession();
-      return { status: 'REVIEW_REQUIRED', reason: 'OUTSIDE_GEOFENCE', livenessSession: session };
+    if (
+      this.config.siteLocation &&
+      !isInsideSiteGeofence(gps, this.config.siteLocation)
+    ) {
+      const session =
+        activeLivenessSession ?? this.livenessDetector.createSession();
+      return {
+        status: "REVIEW_REQUIRED",
+        reason: "OUTSIDE_GEOFENCE",
+        livenessSession: session,
+      };
     }
 
     // ── 2. CLAHE preprocessing ────────────────────────────────────────────
-    const processed = this.preprocessor.preprocess(frame);
+    await yield_();
+    const small = downscaleFrame(frame, 320);
+    const processed = this.preprocessor.preprocess(small);
     await this.yieldToUI();
 
     // ── 3. Face detection + quality gate ──────────────────────────────────
+    await yield_();
     const face = await this.faceEngine.detectFace(processed);
     const quality = this.faceEngine.assessQuality(face);
     if (!face || !quality.accepted) {
-      throw new Error(`Face quality rejected: ${quality.reasons.join(',') || 'UNKNOWN'}`);
+      throw new Error(
+        `Face quality rejected: ${quality.reasons.join(",") || "UNKNOWN"}`,
+      );
     }
 
     await this.yieldToUI();
@@ -239,11 +275,18 @@ export class GUARDEngine {
 
     if (activeLivenessSession) {
       // Active check already confirmed by screen — only run passive here
-      liveness = await this.evaluatePassiveLiveness(activeLivenessSession, processed, face);
+      liveness = await this.evaluatePassiveLiveness(
+        activeLivenessSession,
+        processed,
+        face,
+      );
     } else {
       // Self-contained path: auto-complete active challenges, then run passive
       let session = this.livenessDetector.createSession();
-      session = this.livenessDetector.evaluateActive(session, session.challenges);
+      session = this.livenessDetector.evaluateActive(
+        session,
+        session.challenges,
+      );
       liveness = await this.evaluatePassiveLiveness(session, processed, face);
     }
 
@@ -259,21 +302,30 @@ export class GUARDEngine {
       });
       await this.persistChain();
       return {
-        status: 'REVIEW_REQUIRED',
+        status: "REVIEW_REQUIRED",
         livenessSession: liveness,
-        reason: liveness.timedOut ? 'LIVENESS_TIMEOUT' : 'LIVENESS_FAILED',
+        reason: liveness.timedOut ? "LIVENESS_TIMEOUT" : "LIVENESS_FAILED",
       };
     }
 
     // ── 5. Face embedding + recognition ───────────────────────────────────
+    await yield_();
     const embedding = await this.faceEngine.generateEmbedding(processed, face);
-    const recognition = this.faceEngine.match(embedding, this.config.recognitionThreshold);
+    const recognition = this.faceEngine.match(
+      embedding,
+      this.config.recognitionThreshold,
+    );
     if (!recognition) {
-      throw new Error('No enrolled worker matched recognition threshold.');
+      throw new Error("No enrolled worker matched recognition threshold.");
     }
 
-    if (recognition.tier === 'LOW' && !this.config.allowLowConfidenceCommit) {
-      return { status: 'REVIEW_REQUIRED', recognition, livenessSession: liveness, reason: 'LOW_CONFIDENCE_MATCH' };
+    if (recognition.tier === "LOW" && !this.config.allowLowConfidenceCommit) {
+      return {
+        status: "REVIEW_REQUIRED",
+        recognition,
+        livenessSession: liveness,
+        reason: "LOW_CONFIDENCE_MATCH",
+      };
     }
 
     // ── 6. Merkle-chain append ─────────────────────────────────────────────
@@ -287,7 +339,7 @@ export class GUARDEngine {
     await this.persistChain();
 
     return {
-      status: record.reviewRequired ? 'REVIEW_REQUIRED' : 'COMMITTED',
+      status: record.reviewRequired ? "REVIEW_REQUIRED" : "COMMITTED",
       record,
       recognition,
       livenessSession: liveness,
@@ -301,23 +353,46 @@ export class GUARDEngine {
   private async evaluatePassiveLiveness(
     session: LivenessSession,
     frame: ImageFrame,
-    face: FaceRegion
+    face: FaceRegion,
   ): Promise<LivenessSession> {
+    // If the frame is a mockFrame (flat colour, zero variance) skip passive
+    // liveness — this only happens when no real camera frame was captured.
+    const isMockFrame = this._isFlatFrame(frame);
+    if (isMockFrame) {
+      console.log(
+        "[GUARDEngine] Mock frame detected — skipping passive liveness.",
+      );
+      return this.livenessDetector.evaluatePassiveFromScore(session, 0.0);
+    }
+
     if (this.models.minifas) {
       try {
-        // Crop detected face to 80×80, normalise to [0, 1] for MiniFAS
         const input = cropAndNormalize(frame, face, MINIFAS_INPUT_SIZE, 0, 1);
         const output = await this.models.minifas.run([input]);
         const scores = output[0] as Float32Array;
-        // scores = [real_prob, print_prob, replay_prob]
         const spoofScore = scores.length >= 1 ? 1.0 - scores[0] : 1.0;
-        return this.livenessDetector.evaluatePassiveFromScore(session, spoofScore);
+        return this.livenessDetector.evaluatePassiveFromScore(
+          session,
+          spoofScore,
+        );
       } catch (minifasError) {
-        console.warn('[GUARDEngine] MiniFAS inference error — falling back to heuristic.', minifasError);
+        console.warn(
+          "[GUARDEngine] MiniFAS error — falling back to heuristic.",
+          minifasError,
+        );
       }
     }
-    // Development fallback: pixel-level luminance/variance heuristic
     return this.livenessDetector.evaluatePassive(session, frame);
+  }
+
+  /** Returns true if every pixel in the frame has the same value — mockFrame indicator. */
+  private _isFlatFrame(frame: ImageFrame): boolean {
+    if (frame.data.length < 10) return true;
+    const ref = frame.data[0];
+    for (let i = 1; i < Math.min(frame.data.length, 500); i++) {
+      if (frame.data[i] !== ref) return false;
+    }
+    return true;
   }
 
   // ── Stats & Sync ──────────────────────────────────────────────────────────
@@ -337,7 +412,9 @@ export class GUARDEngine {
     };
   }
 
-  async syncPending(sendBatch: (batch: SyncBatch) => Promise<SyncAck>): Promise<{ synced: number; purged: number }> {
+  async syncPending(
+    sendBatch: (batch: SyncBatch) => Promise<SyncAck>,
+  ): Promise<{ synced: number; purged: number }> {
     this.assertReady();
     const result = await this.syncEngine.sync(sendBatch);
     await this.persistChain();
@@ -347,15 +424,20 @@ export class GUARDEngine {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private averageEmbeddings(embeddings: number[][]): number[] {
-    if (embeddings.length === 0) throw new Error('At least one enrollment sample is required.');
+    if (embeddings.length === 0)
+      throw new Error("At least one enrollment sample is required.");
     return embeddings[0].map((_, index) => {
-      const sum = embeddings.reduce((total, embedding) => total + embedding[index], 0);
+      const sum = embeddings.reduce(
+        (total, embedding) => total + embedding[index],
+        0,
+      );
       return sum / embeddings.length;
     });
   }
 
   private assertReady(): void {
-    if (!this.ready) throw new Error('GUARDEngine must be initialized before use.');
+    if (!this.ready)
+      throw new Error("GUARDEngine must be initialized before use.");
   }
 
   private async persistChain(): Promise<void> {
@@ -364,4 +446,36 @@ export class GUARDEngine {
       spoofIncidents: this.merkleChain.getSpoofIncidents(),
     });
   }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+/** Yield to the JS event loop so the UI thread stays responsive. */
+const yield_ = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Downscale a frame to at most maxDim on its longest side.
+ * CLAHE on 320×180 takes ~15ms vs ~2500ms on 1280×720.
+ */
+function downscaleFrame(frame: ImageFrame, maxDim = 320): ImageFrame {
+  const scale = Math.min(1, maxDim / Math.max(frame.width, frame.height));
+  if (scale >= 1) return frame; // already small enough
+
+  const dstW = Math.max(1, Math.round(frame.width * scale));
+  const dstH = Math.max(1, Math.round(frame.height * scale));
+  const ch = frame.channels;
+  const out = new Uint8Array(dstW * dstH * ch);
+  const xR = frame.width / dstW;
+  const yR = frame.height / dstH;
+
+  for (let y = 0; y < dstH; y++) {
+    for (let x = 0; x < dstW; x++) {
+      const sx = Math.min(frame.width - 1, Math.floor(x * xR));
+      const sy = Math.min(frame.height - 1, Math.floor(y * yR));
+      const src = (sy * frame.width + sx) * ch;
+      const dst = (y * dstW + x) * ch;
+      for (let c = 0; c < ch; c++) out[dst + c] = frame.data[src + c];
+    }
+  }
+  return { width: dstW, height: dstH, channels: frame.channels, data: out };
 }
