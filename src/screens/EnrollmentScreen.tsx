@@ -130,7 +130,7 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
             style={StyleSheet.absoluteFill}
             device={device}
             isActive={!enrolled}
-            frameProcessor={frameProcessor}
+            frameProcessor={undefined}
           />
         ) : (
           <Text style={styles.cameraLabel}>

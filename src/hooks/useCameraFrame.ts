@@ -15,23 +15,23 @@
  *
  * 3. frameCount as global worklet variable (from previous fix) — kept.
  */
-import { useCallback, useRef, RefObject } from 'react';
+import { useCallback, useRef, RefObject } from "react";
 import {
   Camera,
   Frame,
   useCameraDevice,
   useCameraPermission,
   useFrameProcessor,
-} from 'react-native-vision-camera';
-import { Platform } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
-import { useRunOnJS } from 'react-native-worklets-core';
-import type { TensorflowModel } from 'react-native-fast-tflite';
-import type { ImageFrame } from '../ml/CLAHEPreprocessor';
-import type { FaceRegion } from '../types';
+} from "react-native-vision-camera";
+import { Platform } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
+import { useRunOnJS } from "react-native-worklets-core";
+import type { TensorflowModel } from "react-native-fast-tflite";
+import type { ImageFrame } from "../ml/CLAHEPreprocessor";
+import type { FaceRegion } from "../types";
 
 const BLAZEFACE_CONF_THRESH = 0.5;
-const BLAZEFACE_INFERENCE_INTERVAL = 2;
+const BLAZEFACE_INFERENCE_INTERVAL = 15;
 
 export interface UseCameraFrameResult {
   hasPermission: boolean;
@@ -51,28 +51,25 @@ export interface UseCameraFrameOptions {
 
 export function useCameraFrame(
   blazefaceModel: TensorflowModel | null,
-  facing: 'front' | 'back' = 'front',
+  facing: "front" | "back" = "front",
   options: UseCameraFrameOptions = {},
 ): UseCameraFrameResult {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device      = useCameraDevice(facing);
-  const cameraRef   = useRef<Camera>(null);
+  const device = useCameraDevice(facing);
+  const cameraRef = useRef<Camera>(null);
   const sharedQuality = useSharedValue(0);
 
   // Store the latest raw frame ref — only written from JS thread via runOnJS
   const latestFrameRef = useRef<ImageFrame | null>(null);
-  const latestFaceRef  = useRef<FaceRegion | null>(null);
+  const latestFaceRef = useRef<FaceRegion | null>(null);
 
   // ── JS-thread callbacks, wrapped with worklets-core's useRunOnJS ─────────
   // useRunOnJS creates a worklet-callable wrapper that dispatches to JS thread.
   // This is the correct API for VisionCamera v4 + worklets-core.
 
-  const storeLatestFrame = useRunOnJS(
-    (frame: ImageFrame) => {
-      latestFrameRef.current = frame;
-    },
-    [],
-  );
+  const storeLatestFrame = useRunOnJS((frame: ImageFrame) => {
+    latestFrameRef.current = frame;
+  }, []);
 
   const updateDetection = useRunOnJS(
     (face: FaceRegion | null) => {
@@ -94,7 +91,7 @@ export function useCameraFrame(
   // ── Frame processor (worklets-core runtime) ──────────────────────────────
   const frameProcessor = useFrameProcessor(
     (frame: Frame) => {
-      'worklet';
+      "worklet";
 
       // Worklet-local frame counter via global (no useSharedValue needed).
       if (!(globalThis as any).__guardFrameCount) {
@@ -104,14 +101,14 @@ export function useCameraFrame(
 
       // Only extract pixel data every 5th frame (~6fps) to reduce CPU load.
       // toArrayBuffer() requires minSdkVersion 26 — only call it when needed.
-      const shouldCopyFrame = (globalThis as any).__guardFrameCount % 5 === 0;
+      const shouldCopyFrame = (globalThis as any).__guardFrameCount % 30 === 0;
 
       if (shouldCopyFrame) {
         try {
           const buffer = frame.toArrayBuffer();
-          const raw    = new Uint8Array(buffer);
+          const raw = new Uint8Array(buffer);
           const pixels = frame.width * frame.height;
-          const rgb    = new Uint8Array(pixels * 3);
+          const rgb = new Uint8Array(pixels * 3);
 
           // YUV (NV21/NV12) → RGB conversion
           // Y plane is the first (width*height) bytes in most Android YUV formats
@@ -119,12 +116,17 @@ export function useCameraFrame(
           // for CLAHE + MobileFaceNet inference.
           for (let i = 0; i < pixels; i++) {
             const y = raw[i];
-            rgb[i * 3]     = y;
+            rgb[i * 3] = y;
             rgb[i * 3 + 1] = y;
             rgb[i * 3 + 2] = y;
           }
 
-          storeLatestFrame({ data: rgb, width: frame.width, height: frame.height, channels: 3 });
+          storeLatestFrame({
+            data: rgb,
+            width: frame.width,
+            height: frame.height,
+            channels: 3,
+          });
         } catch {
           // toArrayBuffer() unavailable (minSdkVersion < 26 or iOS simulator)
           // Recognition will fall back to mockFrame in GUARDEngine — non-fatal.
@@ -137,7 +139,10 @@ export function useCameraFrame(
         return;
       }
 
-      if ((globalThis as any).__guardFrameCount % BLAZEFACE_INFERENCE_INTERVAL !== 0) {
+      if (
+        (globalThis as any).__guardFrameCount % BLAZEFACE_INFERENCE_INTERVAL !==
+        0
+      ) {
         return;
       }
 
@@ -146,7 +151,10 @@ export function useCameraFrame(
           (globalThis as any).__guardLastInferenceAt = 0;
         }
         const now = Date.now();
-        if (now - (globalThis as any).__guardLastInferenceAt < inferenceThrottleMs) {
+        if (
+          now - (globalThis as any).__guardLastInferenceAt <
+          inferenceThrottleMs
+        ) {
           return;
         }
         (globalThis as any).__guardLastInferenceAt = now;
@@ -154,12 +162,16 @@ export function useCameraFrame(
 
       try {
         const outputs = blazefaceModel.runSync([frame as any]);
-        const boxes  = outputs[0] as Float32Array;
+        const boxes = outputs[0] as Float32Array;
         const scores = outputs[1] as Float32Array;
 
-        let bestScore = -1, bestIdx = -1;
+        let bestScore = -1,
+          bestIdx = -1;
         for (let i = 0; i < scores.length; i++) {
-          if (scores[i] > bestScore) { bestScore = scores[i]; bestIdx = i; }
+          if (scores[i] > bestScore) {
+            bestScore = scores[i];
+            bestIdx = i;
+          }
         }
 
         if (bestScore < BLAZEFACE_CONF_THRESH || bestIdx < 0) {
@@ -173,17 +185,23 @@ export function useCameraFrame(
         const xmax = boxes[bestIdx * 4 + 3];
 
         updateDetection({
-          x:          Math.round(xmin * frame.width),
-          y:          Math.round(ymin * frame.height),
-          width:      Math.round((xmax - xmin) * frame.width),
-          height:     Math.round((ymax - ymin) * frame.height),
+          x: Math.round(xmin * frame.width),
+          y: Math.round(ymin * frame.height),
+          width: Math.round((xmax - xmin) * frame.width),
+          height: Math.round((ymax - ymin) * frame.height),
           confidence: bestScore,
         });
       } catch {
         updateDetection(null);
       }
     },
-    [blazefaceModel, detectEnabled, inferenceThrottleMs, storeLatestFrame, updateDetection],
+    [
+      blazefaceModel,
+      detectEnabled,
+      inferenceThrottleMs,
+      storeLatestFrame,
+      updateDetection,
+    ],
   );
 
   const captureFrame = useCallback(

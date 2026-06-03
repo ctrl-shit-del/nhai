@@ -155,7 +155,7 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
             style={StyleSheet.absoluteFill}
             device={device}
             isActive={status !== 'success'}
-            frameProcessor={frameProcessor}
+            frameProcessor={undefined}
           />
         ) : (
           <Text style={styles.cameraLabel}>
