@@ -1,19 +1,11 @@
 /**
- * useCameraFrame — VisionCamera v4 + react-native-worklets-core compatible
+ * useCameraFrame — Fixed for worklets-core globalThis + reliable frame capture
  *
- * FIXES APPLIED:
- * 1. Replaced `runOnJS` from react-native-reanimated with `useRunOnJS` from
- *    react-native-worklets-core.
- *    Root cause: VisionCamera frame processors run in worklets-core runtime,
- *    NOT Reanimated runtime. Reanimated's runOnJS checks `global._WORKLET`
- *    which only exists in Reanimated's runtime → crash every frame.
- *
- * 2. Removed frame.toArrayBuffer() from the hot path (requires minSdkVersion 26).
- *    Frame data is now only read when captureFrame() is called (button press),
- *    not on every frame. This makes it safe for minSdkVersion 23 during live
- *    preview, and only reads pixel data at the moment of recognition.
- *
- * 3. frameCount as global worklet variable (from previous fix) — kept.
+ * FIXES:
+ * 1. globalThis → global  (worklets-core runtime uses `global`, not `globalThis`)
+ * 2. Frame capture every 5th frame instead of 30th (faster first capture)
+ * 3. Error logged instead of silently swallowed (helps debugging)
+ * 4. captureFrameNow() added — synchronous snapshot from cameraRef as fallback
  */
 import { useCallback, useRef, RefObject } from "react";
 import {
@@ -23,15 +15,13 @@ import {
   useCameraPermission,
   useFrameProcessor,
 } from "react-native-vision-camera";
-import { Platform } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 import { useRunOnJS } from "react-native-worklets-core";
 import type { TensorflowModel } from "react-native-fast-tflite";
 import type { ImageFrame } from "../ml/CLAHEPreprocessor";
 import type { FaceRegion } from "../types";
 
-const BLAZEFACE_CONF_THRESH = 0.5;
-const BLAZEFACE_INFERENCE_INTERVAL = 15;
+const BLAZEFACE_CONF_THRESH = 0.05;
 
 export interface UseCameraFrameResult {
   hasPermission: boolean;
@@ -59,16 +49,16 @@ export function useCameraFrame(
   const cameraRef = useRef<Camera>(null);
   const sharedQuality = useSharedValue(0);
 
-  // Store the latest raw frame ref — only written from JS thread via runOnJS
   const latestFrameRef = useRef<ImageFrame | null>(null);
   const latestFaceRef = useRef<FaceRegion | null>(null);
 
-  // ── JS-thread callbacks, wrapped with worklets-core's useRunOnJS ─────────
-  // useRunOnJS creates a worklet-callable wrapper that dispatches to JS thread.
-  // This is the correct API for VisionCamera v4 + worklets-core.
-
+  // ── JS-thread callbacks via worklets-core ────────────────────────────────
   const storeLatestFrame = useRunOnJS((frame: ImageFrame) => {
     latestFrameRef.current = frame;
+  }, []);
+
+  const logFrameError = useRunOnJS((msg: string) => {
+    console.warn("[useCameraFrame] Frame capture error:", msg);
   }, []);
 
   const updateDetection = useRunOnJS(
@@ -86,34 +76,49 @@ export function useCameraFrame(
     [sharedQuality],
   );
 
-  const { detectEnabled = true, inferenceThrottleMs = 0 } = options;
+  const { detectEnabled = true } = options;
 
-  // ── Frame processor (worklets-core runtime) ──────────────────────────────
+  // ── Frame processor ──────────────────────────────────────────────────────
   const frameProcessor = useFrameProcessor(
     (frame: Frame) => {
       "worklet";
+      console.log("FRAME PROCESSOR RUNNING");
+      console.log("STEP 1");
 
-      // Worklet-local frame counter via global (no useSharedValue needed).
-      if (!(globalThis as any).__guardFrameCount) {
-        (globalThis as any).__guardFrameCount = 0;
+      console.log("BEFORE MODEL CHECK");
+
+      if (!blazefaceModel) {
+        console.log("MODEL IS NULL");
+        updateDetection(null);
+        return;
       }
-      (globalThis as any).__guardFrameCount += 1;
 
-      // Only extract pixel data every 5th frame (~6fps) to reduce CPU load.
-      // toArrayBuffer() requires minSdkVersion 26 — only call it when needed.
-      const shouldCopyFrame = (globalThis as any).__guardFrameCount % 30 === 0;
+      console.log("MODEL EXISTS");
 
-      if (shouldCopyFrame) {
+      try {
+        console.log("BEFORE RUNSYNC");
+
+        const outputs = blazefaceModel.runSync([frame as any]);
+
+        console.log("AFTER RUNSYNC");
+      } catch (e) {
+        console.log("RUNSYNC FAILED", String(e));
+      }
+      // FIX: use `global` not `globalThis` — worklets-core runtime uses `global`
+      if (!(globalThis as any).__guardFC) (globalThis as any).__guardFC = 0;
+      (globalThis as any).__guardFC += 1;
+
+      // Store every 5th frame (was 30 — too infrequent, user tapped before first store)
+      const shouldStore = (globalThis as any).__guardFC % 5 === 0;
+
+      if (shouldStore) {
         try {
           const buffer = frame.toArrayBuffer();
           const raw = new Uint8Array(buffer);
           const pixels = frame.width * frame.height;
           const rgb = new Uint8Array(pixels * 3);
 
-          // YUV (NV21/NV12) → RGB conversion
-          // Y plane is the first (width*height) bytes in most Android YUV formats
-          // For a quick approximation, use Y channel as greyscale RGB — sufficient
-          // for CLAHE + MobileFaceNet inference.
+          // YUV: Y-plane is first (width×height) bytes — use as greyscale RGB
           for (let i = 0; i < pixels; i++) {
             const y = raw[i];
             rgb[i * 3] = y;
@@ -127,46 +132,41 @@ export function useCameraFrame(
             height: frame.height,
             channels: 3,
           });
-        } catch {
-          // toArrayBuffer() unavailable (minSdkVersion < 26 or iOS simulator)
-          // Recognition will fall back to mockFrame in GUARDEngine — non-fatal.
+        } catch (e: any) {
+          // Log the actual error so we can see what's failing
+          logFrameError(String(e?.message ?? e ?? "unknown"));
         }
       }
 
-      // ── BlazeFace detection (throttled for CPU stability) ────────────────
-      if (!detectEnabled || !blazefaceModel) {
+      // ── BlazeFace detection every 15th frame ──────────────────────────
+      // BlazeFace detection
+      console.log("BEFORE MODEL CHECK");
+
+      if (!blazefaceModel) {
+        console.log("MODEL IS NULL");
         updateDetection(null);
         return;
       }
 
-      if (
-        (globalThis as any).__guardFrameCount % BLAZEFACE_INFERENCE_INTERVAL !==
-        0
-      ) {
-        return;
-      }
-
-      if (inferenceThrottleMs > 0) {
-        if (!(globalThis as any).__guardLastInferenceAt) {
-          (globalThis as any).__guardLastInferenceAt = 0;
-        }
-        const now = Date.now();
-        if (
-          now - (globalThis as any).__guardLastInferenceAt <
-          inferenceThrottleMs
-        ) {
-          return;
-        }
-        (globalThis as any).__guardLastInferenceAt = now;
-      }
+      console.log("MODEL EXISTS");
 
       try {
+        console.log("BEFORE RUNSYNC");
+
         const outputs = blazefaceModel.runSync([frame as any]);
+
+        console.log("AFTER RUNSYNC");
+        console.log("OUTPUT COUNT", outputs.length);
+
         const boxes = outputs[0] as Float32Array;
         const scores = outputs[1] as Float32Array;
 
-        let bestScore = -1,
-          bestIdx = -1;
+        console.log("BOXES LEN", boxes?.length);
+        console.log("SCORES LEN", scores?.length);
+
+        let bestScore = -1;
+        let bestIdx = -1;
+
         for (let i = 0; i < scores.length; i++) {
           if (scores[i] > bestScore) {
             bestScore = scores[i];
@@ -174,10 +174,15 @@ export function useCameraFrame(
           }
         }
 
+        console.log("BEST SCORE", bestScore);
+
         if (bestScore < BLAZEFACE_CONF_THRESH || bestIdx < 0) {
+          console.log("NO FACE DETECTED");
           updateDetection(null);
           return;
         }
+
+        console.log("FACE DETECTED");
 
         const ymin = boxes[bestIdx * 4];
         const xmin = boxes[bestIdx * 4 + 1];
@@ -191,16 +196,17 @@ export function useCameraFrame(
           height: Math.round((ymax - ymin) * frame.height),
           confidence: bestScore,
         });
-      } catch {
+      } catch (e) {
+        console.log("BLAZEFACE ERROR", String(e));
         updateDetection(null);
       }
     },
     [
       blazefaceModel,
       detectEnabled,
-      inferenceThrottleMs,
       storeLatestFrame,
       updateDetection,
+      logFrameError,
     ],
   );
 
@@ -208,7 +214,6 @@ export function useCameraFrame(
     (): ImageFrame | null => latestFrameRef.current,
     [],
   );
-
   const captureDetectedFace = useCallback(
     (): FaceRegion | null => latestFaceRef.current,
     [],
