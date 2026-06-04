@@ -1,6 +1,6 @@
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChainBadge } from '../components/ChainBadge';
 import type { GUARDEngine } from '../config/GUARDEngine';
@@ -17,9 +17,12 @@ export function DashboardScreen({ engine }: GUARDEngineProps) {
     setStats(engine.getStats());
   };
 
-  useEffect(() => {
-    refreshStats();
-  }, [engine]);
+  // GUARD FIX: Issue 5 — Refresh worker count when returning from Enrollment
+  useFocusEffect(
+    useCallback(() => {
+      refreshStats();
+    }, [engine])
+  );
 
   return (
     <View style={styles.screen}>

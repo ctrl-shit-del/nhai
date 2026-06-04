@@ -1,24 +1,11 @@
 /**
- * useCameraFrame — ANR fix
+ * useCameraFrame — throttled VisionCamera frame capture for enrollment / attendance.
  *
- * ROOT CAUSE OF ANR:
- *   blazefaceModel.runSync([frame]) — passing a raw VisionCamera Frame object
- *   to react-native-fast-tflite. TFLite expects Float32Array, not a Frame.
- *   This throws "no ArrayBuffer attached" on EVERY frame at 30fps = 30
- *   exceptions/second → JS thread saturated → "GUARD isn't responding" ANR.
- *
- * FIX:
- *   Frame processor is now a no-op. Camera preview still works perfectly.
- *   Enrollment + attendance use synthetic frames → FaceEngine mock fallbacks
- *   (detectFace mock returns confidence 0.92, generateEmbedding returns
- *   deterministic hash-based vector). The full pipeline works in demo mode.
- *
- * NOTE: Real BlazeFace inference requires converting the Frame to Float32Array
- *   BEFORE calling runSync. That conversion requires toArrayBuffer() which also
- *   fails on this device. For production: use frame.toArrayBuffer() → Uint8Array
- *   → normalize → Float32Array → runSync.
+ * GUARD FIX: Issue 1 — Real frames via frame processor + runOnJS (300ms throttle).
+ * Avoids passing Frame objects to TFLite (ANR). Stores latest RGB ImageFrame on JS thread.
  */
-import { useCallback, useRef, RefObject } from 'react';
+import { useCallback, useRef, type RefObject } from 'react';
+import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import {
   Camera,
   Frame,
@@ -26,10 +13,13 @@ import {
   useCameraPermission,
   useFrameProcessor,
 } from 'react-native-vision-camera';
-import { useSharedValue } from 'react-native-reanimated';
 import type { TensorflowModel } from 'react-native-fast-tflite';
 import type { ImageFrame } from '../ml/CLAHEPreprocessor';
 import type { FaceRegion } from '../types';
+import {
+  arrayBufferToImageFrame,
+  buildSyntheticImageFrame,
+} from '../utils/frameConversion';
 
 export interface UseCameraFrameResult {
   hasPermission: boolean;
@@ -37,8 +27,11 @@ export interface UseCameraFrameResult {
   device: ReturnType<typeof useCameraDevice>;
   cameraRef: RefObject<Camera>;
   frameProcessor: ReturnType<typeof useFrameProcessor>;
-  captureFrame: () => ImageFrame | null;
+  /** Latest throttled frame from the camera, or synthetic fallback if none yet. */
+  captureFrame: () => ImageFrame;
   captureDetectedFace: () => FaceRegion | null;
+  /** True when at least one real frame has been stored from the camera. */
+  hasRealFrame: () => boolean;
   sharedQuality: ReturnType<typeof useSharedValue<number>>;
 }
 
@@ -50,37 +43,72 @@ export interface UseCameraFrameOptions {
 export function useCameraFrame(
   _blazefaceModel: TensorflowModel | null,
   facing: 'front' | 'back' = 'front',
-  _options: UseCameraFrameOptions = {},
+  options: UseCameraFrameOptions = {},
 ): UseCameraFrameResult {
+  const throttleMs = options.inferenceThrottleMs ?? 300;
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device        = useCameraDevice(facing);
-  const cameraRef     = useRef<Camera>(null);
+  const device = useCameraDevice(facing);
+  const cameraRef = useRef<Camera>(null);
   const sharedQuality = useSharedValue(0);
   const latestFrameRef = useRef<ImageFrame | null>(null);
-  const latestFaceRef  = useRef<FaceRegion | null>(null);
+  const latestFaceRef = useRef<FaceRegion | null>(null);
+  const hasRealFrameRef = useRef(false);
+  const lastProcessTs = useSharedValue(0);
 
-  // ── Frame processor — intentionally empty ───────────────────────────────
-  //
-  // DO NOT call blazefaceModel.runSync([frame]) here.
-  // VisionCamera Frame objects cannot be passed directly to TFLite.
-  // TFLite requires Float32Array input. Passing a Frame throws
-  // "no ArrayBuffer attached" on every frame → ANR.
-  //
-  // Camera preview works perfectly with an empty frame processor.
-  // Enrollment and attendance call engine.enrollWorker() / markAttendance()
-  // which run inference through FaceEngine with proper Float32Array inputs
-  // converted from ImageFrame by fullFrameNormalize() / cropAndNormalize().
-  //
-  const frameProcessor = useFrameProcessor(
-    (_frame: Frame) => {
-      'worklet';
-      // No-op. Prevents ANR. Camera preview unaffected.
+  // GUARD FIX: Issue 1 — Store frame on JS thread (called from worklet via runOnJS)
+  const storeFrameOnJS = useCallback(
+    (width: number, height: number, buffer: ArrayBuffer) => {
+      try {
+        const imageFrame = arrayBufferToImageFrame(buffer, width, height);
+        if (imageFrame) {
+          latestFrameRef.current = imageFrame;
+          hasRealFrameRef.current = true;
+          console.log(
+            `[useCameraFrame] Stored frame ${width}x${height} (${imageFrame.data.length} bytes)`,
+          );
+        }
+      } catch (storeError) {
+        console.warn('[useCameraFrame] Failed to store frame on JS thread', storeError);
+      }
     },
     [],
   );
 
-  const captureFrame        = useCallback((): ImageFrame | null => latestFrameRef.current, []);
-  const captureDetectedFace = useCallback((): FaceRegion | null => latestFaceRef.current, []);
+  const frameProcessor = useFrameProcessor(
+    (frame: Frame) => {
+      'worklet';
+      const now = Date.now();
+      if (now - lastProcessTs.value < throttleMs) {
+        return;
+      }
+      lastProcessTs.value = now;
+
+      try {
+        const buffer = frame.toArrayBuffer();
+        runOnJS(storeFrameOnJS)(frame.width, frame.height, buffer);
+      } catch {
+        // toArrayBuffer may fail inside worklet on some devices — captureFrame uses fallback
+      }
+    },
+    [storeFrameOnJS, throttleMs],
+  );
+
+  const captureFrame = useCallback((): ImageFrame => {
+    if (latestFrameRef.current) {
+      return latestFrameRef.current;
+    }
+    console.warn(
+      '[GUARD] Using synthetic frame fallback — real capture unavailable',
+    );
+    return buildSyntheticImageFrame();
+  }, []);
+
+  const captureDetectedFace = useCallback(
+    (): FaceRegion | null => latestFaceRef.current,
+    [],
+  );
+
+  const hasRealFrame = useCallback((): boolean => hasRealFrameRef.current, []);
 
   return {
     hasPermission,
@@ -90,6 +118,7 @@ export function useCameraFrame(
     frameProcessor,
     captureFrame,
     captureDetectedFace,
+    hasRealFrame,
     sharedQuality,
   };
 }

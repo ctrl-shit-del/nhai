@@ -108,30 +108,8 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
 
       await yieldToUI();
 
-      // Capture the latest camera frame for passive liveness + recognition
-      let currentFrame = captureFrame();
-      if (!currentFrame) {
-        // toArrayBuffer() may not be available on this device/format.
-        // Build a synthetic frame so enrollment can proceed.
-        // The embedding will be based on uniform colour — unique per session via timestamp salt.
-        const salt = Date.now() % 256;
-        const w = 112,
-          h = 112;
-        const data = new Uint8Array(w * h * 3);
-        for (let i = 0; i < data.length; i++) data[i] = ((i + salt) % 200) + 28;
-        currentFrame = { data, width: w, height: h, channels: 3 };
-        console.warn(
-          "[Enrollment] Using synthetic frame — toArrayBuffer unavailable on this device.",
-        );
-      }
-
-      if (!currentFrame) {
-        setStatus("failed");
-        setMessage(
-          "No camera frame available. Ensure camera permission is granted.",
-        );
-        return;
-      }
+      // Capture latest throttled camera frame (synthetic fallback inside hook if needed)
+      const currentFrame = captureFrame();
 
       if (!gps) {
         setStatus("failed");
@@ -203,6 +181,7 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
             device={device}
             isActive={status !== "success"}
             frameProcessor={frameProcessor}
+            pixelFormat="rgb"
           />
         ) : (
           <Text style={styles.cameraLabel}>

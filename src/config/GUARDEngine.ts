@@ -85,7 +85,59 @@ export class GUARDEngine {
       this.loadModels(),
     ]);
 
+    // GUARD FIX: Issue 2 — Reload in-memory match index from MMKV after restart
+    await this.hydrateFaceEngineFromStore();
+
     this.ready = true;
+    console.log('[GUARDEngine] initialize() complete');
+  }
+
+  /** Exposed for screens that mount before navigation splash clears. */
+  isEngineReady(): boolean {
+    return this.ready;
+  }
+
+  /**
+   * GUARD FIX: Issue 2 — Populate FaceEngine.enrolled[] from persisted records.
+   * Uses matchingEmbedding when present; falls back to transformedEmbedding for legacy rows.
+   */
+  private async hydrateFaceEngineFromStore(): Promise<void> {
+    const storedRecords = await this.embeddingStore.list();
+    let hydrated = 0;
+
+    for (const record of storedRecords) {
+      const embedding =
+        record.matchingEmbedding && record.matchingEmbedding.length > 0
+          ? record.matchingEmbedding
+          : record.transformedEmbedding;
+
+      if (!embedding || embedding.length === 0) {
+        console.warn(
+          `[GUARDEngine] Skipping worker ${record.workerId} — no embedding data`,
+        );
+        continue;
+      }
+
+      if (this.faceEngine.hasWorker(record.workerId)) {
+        continue;
+      }
+
+      const profile: WorkerProfile = {
+        workerId: record.workerId,
+        workerName: record.workerName,
+        phone: record.phone,
+        labourContractId: record.labourContractId,
+        ppeNotes: record.ppeNotes,
+        enrolledAt: record.enrolledAt,
+      };
+
+      this.faceEngine.enroll(profile, embedding);
+      hydrated += 1;
+    }
+
+    console.log(
+      `[GUARDEngine] Hydrated ${hydrated} workers into FaceEngine from MMKV (${storedRecords.length} on disk)`,
+    );
   }
 
   /**

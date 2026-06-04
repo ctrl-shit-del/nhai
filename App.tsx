@@ -178,7 +178,7 @@ function GuardNavigator({ config }: { config: GUARDConfig }) {
             {() => <AttendanceScreen engine={engine} />}
           </Stack.Screen>
           <Stack.Screen name="Enrollment">
-            {() => <EnrollmentScreen engine={engine} />}
+            {() => <EnrollmentScreen engine={engine} isReady={isReady} />}
           </Stack.Screen>
           <Stack.Screen name="ChainAudit" options={{ title: 'Chain Audit' }}>
             {() => <ChainAuditScreen engine={engine} />}

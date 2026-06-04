@@ -30,6 +30,8 @@ export interface GUARDConfig {
 
 export interface GUARDEngineProps {
   engine: GUARDEngine;
+  /** GUARD FIX: Issue 7 — False until engine.initialize() completes. */
+  isReady?: boolean;
 }
 
 export interface GPSPoint {

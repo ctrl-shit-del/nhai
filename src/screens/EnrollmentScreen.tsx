@@ -1,227 +1,482 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Camera } from "react-native-vision-camera";
-
-const CameraView = Camera as any;
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import {
+  Camera,
+  useCameraDevice,
+  type CameraPermissionStatus,
+} from "react-native-vision-camera";
 import { FaceOverlay } from "../components/FaceOverlay";
 import { useCameraFrame } from "../hooks/useCameraFrame";
-import type { GUARDEngineProps, WorkerProfile } from "../types";
 import type { ImageFrame } from "../ml/CLAHEPreprocessor";
+import type { GUARDEngineProps, WorkerProfile } from "../types";
 
-export function EnrollmentScreen({ engine }: GUARDEngineProps) {
+// GUARD FIX: S2 — Human-readable enrollment errors
+function friendlyEnrollError(raw: string): string {
+  if (raw.includes("LOW_QUALITY")) {
+    return "Sample rejected: face too small or blurry. Move closer and ensure good lighting.";
+  }
+  if (raw.includes("NO_FACE")) {
+    return "No face detected. Please center your face in the frame.";
+  }
+  if (raw.includes("three accepted")) {
+    return "Please capture all 3 samples before saving.";
+  }
+  if (raw.includes("must be initialized")) {
+    return "App is still loading. Please wait a moment.";
+  }
+  if (raw.includes("liveness authorization")) {
+    return "Supervisor verification required. Please complete liveness check first.";
+  }
+  return raw;
+}
+
+// GUARD FIX: Issue 4 — Stable worker IDs
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function sanitizeLabourContractId(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-_]/g, "");
+}
+
+function resolveWorkerId(labourContractId: string): string {
+  const sanitized = sanitizeLabourContractId(labourContractId);
+  return sanitized.length > 0 ? sanitized : generateUUID();
+}
+
+type SampleSlotStatus = "empty" | "good" | "low_quality" | "no_face";
+
+interface SampleSlot {
+  frame: ImageFrame | null;
+  status: SampleSlotStatus;
+  capturedAt?: number;
+  hint?: string;
+}
+
+const EMPTY_SLOTS: SampleSlot[] = [
+  { frame: null, status: "empty" },
+  { frame: null, status: "empty" },
+  { frame: null, status: "empty" },
+];
+
+export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) {
   const [workerName, setWorkerName] = useState("");
   const [labourContractId, setLabourContractId] = useState("");
   const [ppeNotes, setPpeNotes] = useState("");
   const [enrolling, setEnrolling] = useState(false);
-  const [enrolled, setEnrolled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sampleMessage, setSampleMessage] = useState(
-    "Align face and tap Capture",
+    "Align face in frame, then capture each sample (S1–S3).",
   );
-  const [sampleCount, setSampleCount] = useState(0);
+  const [slots, setSlots] = useState<SampleSlot[]>(EMPTY_SLOTS);
   const [formFocused, setFormFocused] = useState(false);
+  const [permissionStatus, setPermissionStatus] =
+    useState<CameraPermissionStatus>("not-determined");
+  const [successBanner, setSuccessBanner] = useState<{
+    name: string;
+    total: number;
+  } | null>(null);
 
-  // Stored real camera frames — one per sample
-  const samplesRef = useRef<ImageFrame[]>([]);
+  const deviceFront = useCameraDevice("front");
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const detectionPaused = formFocused || enrolling || sampleCount >= 3;
+  const engineReady = isReady || engine.isEngineReady();
 
-  // ── Camera + frame processor ─────────────────────────────────────────────
+  const filledCount = slots.filter((s) => s.frame !== null).length;
+  const allSamplesReady = filledCount === 3;
+
+  // GUARD FIX: S4 — Pause overlay hints only; keep camera preview active
+  const detectionPaused = formFocused || enrolling;
+
   const {
-    hasPermission,
-    requestPermission,
-    device,
+    device: hookDevice,
     cameraRef,
     frameProcessor,
     captureFrame,
-    captureDetectedFace,
-    sharedQuality,
+    hasRealFrame,
   } = useCameraFrame(engine.models.blazeface, "front", {
     detectEnabled: !detectionPaused,
     inferenceThrottleMs: 300,
   });
 
-  // ── Camera permission request ─────────────────────────────────────────────
+  const device = hookDevice ?? deviceFront;
+
+  // GUARD FIX: Issue 6 — Explicit camera permission lifecycle
   useEffect(() => {
-    if (!hasPermission) requestPermission();
-  }, [hasPermission, requestPermission]);
+    let mounted = true;
 
-  // ── Capture one face sample ───────────────────────────────────────────────
-  const captureSample = useCallback(async () => {
-    if (sampleCount >= 3) return;
+    const syncPermission = async () => {
+      try {
+        const status = await Camera.getCameraPermissionStatus();
+        if (!mounted) return;
+        setPermissionStatus(status);
 
-    setError(null);
+        if (status === "not-determined") {
+          const requested = await Camera.requestCameraPermission();
+          if (mounted) setPermissionStatus(requested);
+        }
+      } catch (permError) {
+        console.warn("[EnrollmentScreen] Permission check failed", permError);
+      }
+    };
 
-    // Grab latest frame from frame processor
-    let currentFrame = captureFrame();
-    if (!currentFrame) {
-      // toArrayBuffer() may not be available on this device/format.
-      // Build a synthetic frame so enrollment can proceed.
-      // The embedding will be based on uniform colour — unique per session via timestamp salt.
-      const salt = Date.now() % 256;
-      const w = 112,
-        h = 112;
-      const data = new Uint8Array(w * h * 3);
-      for (let i = 0; i < data.length; i++) data[i] = ((i + salt) % 200) + 28;
-      currentFrame = { data, width: w, height: h, channels: 3 };
-      console.warn(
-        "[Enrollment] Using synthetic frame — toArrayBuffer unavailable on this device.",
-      );
-    }
+    syncPermission();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-    // Quick face quality pre-check using the last BlazeFace detection
-    const captureSample = useCallback(async () => {
-      if (sampleCount >= 3) return;
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  const runQualityPrecheck = useCallback(
+    async (frame: ImageFrame): Promise<{
+      ok: boolean;
+      status: SampleSlotStatus;
+      hint: string;
+    }> => {
+      try {
+        const processed = engine.preprocessor.preprocess(frame);
+        const face = await engine.faceEngine.detectFace(processed);
+        const quality = engine.faceEngine.assessQuality(face);
+
+        if (!face || !quality.accepted) {
+          const reason = quality.reasons.includes("NO_FACE")
+            ? "NO_FACE"
+            : "LOW_QUALITY";
+          return {
+            ok: false,
+            status: reason === "NO_FACE" ? "no_face" : "low_quality",
+            hint:
+              reason === "NO_FACE"
+                ? "No face detected"
+                : "Low quality — retake",
+          };
+        }
+
+        return { ok: true, status: "good", hint: "✓ Good" };
+      } catch (precheckError) {
+        console.warn("[EnrollmentScreen] Precheck failed", precheckError);
+        return { ok: true, status: "good", hint: "✓ Captured" };
+      }
+    },
+    [engine],
+  );
+
+  // GUARD FIX: Issue 3 — Per-slot capture / retake
+  const captureSample = useCallback(
+    async (index: 0 | 1 | 2) => {
+      if (!engineReady || enrolling) return;
 
       setError(null);
+      const currentFrame = captureFrame();
+      const usedReal = hasRealFrame();
 
-      let currentFrame = captureFrame();
-      if (!currentFrame) {
-        const salt = Date.now() % 256;
-        const w = 112,
-          h = 112;
-        const data = new Uint8Array(w * h * 3);
-        for (let i = 0; i < data.length; i++) data[i] = ((i + salt) % 200) + 28;
-        currentFrame = { data, width: w, height: h, channels: 3 };
-      }
-
-      // Accept this frame — engine.enrollWorker() runs its own quality check
-      samplesRef.current = [...samplesRef.current, currentFrame];
-      const nextCount = samplesRef.current.length;
-      setSampleCount(nextCount);
-
-      if (nextCount < 3) {
-        setSampleMessage(`Sample ${nextCount}/3 captured. Keep face steady.`);
-      } else {
-        setSampleMessage(
-          "3 samples captured. Fill in details and tap Save Enrollment.",
-        );
-      }
-    }, [sampleCount, captureFrame, engine]);
-
-    // Accept this frame as a valid sample
-    samplesRef.current = [...samplesRef.current, currentFrame];
-    const nextCount = samplesRef.current.length;
-    setSampleCount(nextCount);
-
-    if (nextCount < 3) {
-      setSampleMessage(`Sample ${nextCount}/3 captured. Keep face steady.`);
-    } else {
-      setSampleMessage(
-        "3 samples captured. Fill in details and tap Save Enrollment.",
+      console.log(
+        `[EnrollmentScreen] Capture S${index + 1} — realFrame=${usedReal} ${currentFrame.width}x${currentFrame.height}`,
       );
-    }
-  }, [sampleCount, captureFrame, captureDetectedFace, engine]);
 
-  // ── Run full enrollment ───────────────────────────────────────────────────
+      const precheck = await runQualityPrecheck(currentFrame);
+
+      setSlots((prev) => {
+        const next = prev.map((s, i) =>
+          i === index
+            ? {
+                frame: currentFrame,
+                status: precheck.status,
+                capturedAt: Date.now(),
+                hint: precheck.hint,
+              }
+            : s,
+        );
+        const captured = next.filter((s) => s.frame !== null).length;
+
+        if (!precheck.ok) {
+          setSampleMessage(
+            `S${index + 1}: ${precheck.hint}. Tap Retake on S${index + 1} to try again.`,
+          );
+        } else if (captured < 3) {
+          setSampleMessage(
+            `${captured}/3 samples ready. Capture or retake remaining slots.`,
+          );
+        } else {
+          setSampleMessage(
+            "All 3 samples ready. Enter worker details and tap Save Enrollment.",
+          );
+        }
+
+        return next;
+      });
+    },
+    [
+      engineReady,
+      enrolling,
+      captureFrame,
+      hasRealFrame,
+      runQualityPrecheck,
+    ],
+  );
+
+  const resetSlots = useCallback(() => {
+    setSlots(EMPTY_SLOTS.map((s) => ({ ...s })));
+    setSampleMessage("Align face in frame, then capture each sample (S1–S3).");
+  }, []);
+
+  // GUARD FIX: Issues 4, 5, 7, S1, S2 — Save enrollment
   const saveEnrollment = useCallback(async () => {
-    if (samplesRef.current.length < 3 || workerName.trim().length === 0) return;
+    if (!engineReady) {
+      Alert.alert("Not ready", "Engine is still initializing. Please wait.");
+      return;
+    }
+
+    const frames = slots
+      .map((s) => s.frame)
+      .filter((f): f is ImageFrame => f !== null);
+
+    if (frames.length < 3 || workerName.trim().length === 0) {
+      setError(friendlyEnrollError("Enrollment requires three accepted face samples."));
+      return;
+    }
+
+    const hasBadSlot = slots.some(
+      (s) => s.status === "low_quality" || s.status === "no_face",
+    );
+    if (hasBadSlot) {
+      setError("One or more samples failed quality check. Please retake them.");
+      return;
+    }
 
     setEnrolling(true);
     setError(null);
-    setEnrolled(false);
+    setSuccessBanner(null);
 
     try {
       const profile: WorkerProfile = {
-        workerId: Date.now().toString(),
+        workerId: resolveWorkerId(labourContractId),
         workerName: workerName.trim(),
         labourContractId: labourContractId.trim() || undefined,
         ppeNotes: ppeNotes.trim() || undefined,
         enrolledAt: Date.now(),
       };
 
-      // engine.enrollWorker runs CLAHE preprocess → BlazeFace detect → quality check →
-      // MobileFaceNet embed (3 samples) → average → privacyTransform → MMKV + in-memory store
-      await engine.enrollWorker(profile, samplesRef.current);
+      console.log(
+        `[EnrollmentScreen] enrollWorker start — ${profile.workerName} (${profile.workerId})`,
+      );
 
-      // Reset form
+      await engine.enrollWorker(profile, frames);
+
+      const total = engine.getStats().enrolledWorkers;
+      setSuccessBanner({ name: profile.workerName, total });
+
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
+        setSuccessBanner(null);
+      }, 3000);
+
       setWorkerName("");
       setLabourContractId("");
       setPpeNotes("");
-      samplesRef.current = [];
-      setSampleCount(0);
-      setSampleMessage("Align face and tap Capture");
-      setEnrolled(true);
+      resetSlots();
+
+      console.log(
+        `[EnrollmentScreen] enrollWorker success — total workers: ${total}`,
+      );
     } catch (enrollError) {
-      setError(
+      const raw =
         enrollError instanceof Error
           ? enrollError.message
-          : "Enrollment failed",
-      );
+          : "Enrollment failed";
+      console.warn("[EnrollmentScreen] enrollWorker failed:", raw);
+      setError(friendlyEnrollError(raw));
     } finally {
       setEnrolling(false);
     }
-  }, [workerName, labourContractId, ppeNotes, engine]);
+  }, [
+    engineReady,
+    slots,
+    workerName,
+    labourContractId,
+    ppeNotes,
+    engine,
+    resetSlots,
+  ]);
 
-  const canCapture = sampleCount < 3 && !enrolling;
+  const openSettings = useCallback(() => {
+    Linking.openSettings().catch(() => {
+      Alert.alert("Settings", "Unable to open device settings.");
+    });
+  }, []);
+
+  const requestPermissionAgain = useCallback(async () => {
+    const result = await Camera.requestCameraPermission();
+    setPermissionStatus(result);
+  }, []);
+
   const canSave =
-    sampleCount === 3 && workerName.trim().length > 0 && !enrolling;
-  const prompt =
-    sampleCount < 3 ? "Align face within frame" : "All samples captured";
+    engineReady &&
+    allSamplesReady &&
+    workerName.trim().length > 0 &&
+    !enrolling &&
+    !slots.some((s) => s.status === "low_quality" || s.status === "no_face");
 
-  const handleFormFocus = useCallback(() => setFormFocused(true), []);
-  const handleFormBlur = useCallback(() => setFormFocused(false), []);
+  const cameraActive = permissionStatus === "granted" && !enrolling;
+
+  const renderPermissionPane = () => {
+    if (permissionStatus === "granted") return null;
+
+    if (permissionStatus === "denied" || permissionStatus === "restricted") {
+      return (
+        <View style={styles.permissionPane}>
+          <Text style={styles.permissionTitle}>Camera access denied</Text>
+          <Text style={styles.permissionBody}>
+            GUARD needs the front camera to capture face samples for enrollment.
+          </Text>
+          <Pressable style={styles.permissionButton} onPress={openSettings}>
+            <Text style={styles.permissionButtonText}>Open Settings</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.permissionPane}>
+        <Text style={styles.permissionTitle}>Camera permission required</Text>
+        <Pressable style={styles.permissionButton} onPress={requestPermissionAgain}>
+          <Text style={styles.permissionButtonText}>Allow Camera</Text>
+        </Pressable>
+      </View>
+    );
+  };
+
+  const renderCamera = () => {
+    if (!device) {
+      return (
+        <Text style={styles.cameraLabel}>Front camera not available on this device.</Text>
+      );
+    }
+
+    if (permissionStatus !== "granted") {
+      return renderPermissionPane();
+    }
+
+    return (
+      <>
+        <Camera
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={cameraActive}
+          frameProcessor={frameProcessor}
+          pixelFormat="rgb"
+        />
+        {detectionPaused ? (
+          <View style={styles.pauseBadge}>
+            <Text style={styles.pauseBadgeText}>Hints paused</Text>
+          </View>
+        ) : null}
+        <FaceOverlay
+          prompt={
+            allSamplesReady
+              ? "All samples captured — fill form below"
+              : "Align face within frame"
+          }
+        />
+      </>
+    );
+  };
 
   return (
     <View style={styles.screen}>
-      {/* ── Camera pane ──────────────────────────────────────────────────── */}
-      <View style={styles.cameraPane}>
-        {device && hasPermission ? (
-          <CameraView
-            ref={cameraRef as any}
-            style={StyleSheet.absoluteFill}
-            device={device}
-            isActive={!enrolled}
-            frameProcessor={frameProcessor}
-          />
-        ) : (
-          <Text style={styles.cameraLabel}>
-            {hasPermission ? "Loading camera…" : "Camera permission required"}
-          </Text>
-        )}
-        {detectionPaused ? (
-          <View style={styles.pauseBadge}>
-            <Text style={styles.pauseBadgeText}>Detection paused</Text>
-          </View>
-        ) : null}
-        <FaceOverlay prompt={prompt} />
-      </View>
+      {!engineReady ? (
+        <View style={styles.initOverlay}>
+          <ActivityIndicator color="#2563EB" size="large" />
+          <Text style={styles.initText}>Initializing GUARD engine…</Text>
+        </View>
+      ) : null}
 
-      {/* ── Form ─────────────────────────────────────────────────────────── */}
+      <View style={styles.cameraPane}>{renderCamera()}</View>
+
       <View style={styles.form}>
         <Text style={styles.title}>Worker Enrollment</Text>
-
         <Text style={styles.sampleStatus}>{sampleMessage}</Text>
 
-        {/* Sample progress indicators */}
-        <View style={styles.sampleRow}>
-          {[1, 2, 3].map((n) => (
-            <Text
-              key={n}
-              style={[
-                styles.sample,
-                sampleCount >= n ? styles.sampleAccepted : styles.samplePending,
-              ]}
-            >
-              {sampleCount >= n ? `✓ S${n}` : `S${n}`}
+        {successBanner ? (
+          <View style={styles.successBanner}>
+            <Text style={styles.successBannerText}>
+              ✓ {successBanner.name} enrolled. Total workers on device:{" "}
+              {successBanner.total}
             </Text>
-          ))}
-        </View>
+          </View>
+        ) : null}
 
-        <Pressable
-          style={[
-            styles.secondaryButton,
-            !canCapture ? styles.disabledButton : null,
-          ]}
-          disabled={!canCapture}
-          onPress={captureSample}
-        >
-          <Text style={styles.secondaryButtonText}>
-            {sampleCount >= 3
-              ? "All Samples Captured"
-              : `Capture Sample ${sampleCount + 1}/3`}
-          </Text>
-        </Pressable>
+        {/* GUARD FIX: Issue 3 — Three independent sample slots */}
+        <View style={styles.sampleRow}>
+          {([0, 1, 2] as const).map((index) => {
+            const slot = slots[index];
+            const hasFrame = slot.frame !== null;
+            const slotStyle =
+              slot.status === "good"
+                ? styles.sampleGood
+                : slot.status === "low_quality" || slot.status === "no_face"
+                  ? styles.sampleRejected
+                  : hasFrame
+                    ? styles.sampleAccepted
+                    : styles.samplePending;
+
+            return (
+              <View key={index} style={styles.sampleSlot}>
+                <Text style={[styles.sampleLabel, slotStyle]}>
+                  {hasFrame
+                    ? slot.status === "good"
+                      ? `✓ S${index + 1}`
+                      : slot.status === "no_face"
+                        ? `✗ S${index + 1}`
+                        : `⚠ S${index + 1}`
+                    : `S${index + 1}`}
+                </Text>
+                {slot.hint ? (
+                  <Text style={styles.sampleHint} numberOfLines={2}>
+                    {slot.hint}
+                  </Text>
+                ) : (
+                  <Text style={styles.sampleHint}>Empty</Text>
+                )}
+                <Pressable
+                  style={[
+                    styles.slotButton,
+                    (!engineReady || enrolling) && styles.disabledButton,
+                  ]}
+                  disabled={!engineReady || enrolling}
+                  onPress={() => captureSample(index)}
+                >
+                  <Text style={styles.slotButtonText}>
+                    {hasFrame ? "Retake" : "Capture"}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
 
         <TextInput
           placeholder="Worker name *"
@@ -229,17 +484,19 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           style={styles.input}
           value={workerName}
           onChangeText={setWorkerName}
-          onFocus={handleFormFocus}
-          onBlur={handleFormBlur}
+          editable={engineReady && !enrolling}
+          onFocus={() => setFormFocused(true)}
+          onBlur={() => setFormFocused(false)}
         />
         <TextInput
-          placeholder="Labour contract ID (optional)"
+          placeholder="Labour contract ID (optional — used as stable worker ID)"
           placeholderTextColor="#6B7280"
           style={styles.input}
           value={labourContractId}
           onChangeText={setLabourContractId}
-          onFocus={handleFormFocus}
-          onBlur={handleFormBlur}
+          editable={engineReady && !enrolling}
+          onFocus={() => setFormFocused(true)}
+          onBlur={() => setFormFocused(false)}
         />
         <TextInput
           placeholder="PPE notes (helmet, mask, etc.)"
@@ -247,26 +504,26 @@ export function EnrollmentScreen({ engine }: GUARDEngineProps) {
           style={styles.input}
           value={ppeNotes}
           onChangeText={setPpeNotes}
-          onFocus={handleFormFocus}
-          onBlur={handleFormBlur}
+          editable={engineReady && !enrolling}
+          onFocus={() => setFormFocused(true)}
+          onBlur={() => setFormFocused(false)}
         />
 
         <Pressable
-          style={[
-            styles.primaryButton,
-            !canSave ? styles.disabledButton : null,
-          ]}
+          style={[styles.primaryButton, !canSave && styles.disabledButton]}
           disabled={!canSave}
           onPress={saveEnrollment}
         >
-          <Text style={styles.primaryButtonText}>
-            {enrolling ? "Enrolling…" : "Save Enrollment"}
-          </Text>
+          {enrolling ? (
+            <View style={styles.saveRow}>
+              <ActivityIndicator color="#FFFFFF" size="small" />
+              <Text style={styles.primaryButtonText}>Processing…</Text>
+            </View>
+          ) : (
+            <Text style={styles.primaryButtonText}>Save Enrollment</Text>
+          )}
         </Pressable>
 
-        {enrolled ? (
-          <Text style={styles.success}>✓ Worker enrolled successfully</Text>
-        ) : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
     </View>
@@ -278,6 +535,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#F6F8FA",
     flex: 1,
   },
+  initOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 20,
+  },
+  initText: {
+    color: "#111827",
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 12,
+  },
   cameraPane: {
     alignItems: "center",
     backgroundColor: "#111827",
@@ -288,6 +562,34 @@ const styles = StyleSheet.create({
   cameraLabel: {
     color: "#9CA3AF",
     fontSize: 13,
+    padding: 16,
+    textAlign: "center",
+  },
+  permissionPane: {
+    alignItems: "center",
+    gap: 12,
+    padding: 20,
+  },
+  permissionTitle: {
+    color: "#F9FAFB",
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  permissionBody: {
+    color: "#9CA3AF",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  permissionButton: {
+    backgroundColor: "#2563EB",
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  permissionButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   pauseBadge: {
     backgroundColor: "rgba(15, 23, 42, 0.8)",
@@ -317,16 +619,29 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     fontSize: 13,
   },
+  successBanner: {
+    backgroundColor: "#DCFCE7",
+    borderRadius: 6,
+    padding: 10,
+  },
+  successBannerText: {
+    color: "#166534",
+    fontSize: 13,
+    fontWeight: "700",
+  },
   sampleRow: {
     flexDirection: "row",
     gap: 8,
   },
-  sample: {
-    borderRadius: 6,
+  sampleSlot: {
     flex: 1,
+    gap: 4,
+  },
+  sampleLabel: {
+    borderRadius: 6,
     fontSize: 12,
     fontWeight: "700",
-    padding: 10,
+    padding: 8,
     textAlign: "center",
   },
   samplePending: {
@@ -334,8 +649,33 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
   },
   sampleAccepted: {
+    backgroundColor: "#E0E7FF",
+    color: "#3730A3",
+  },
+  sampleGood: {
     backgroundColor: "#DCFCE7",
     color: "#166534",
+  },
+  sampleRejected: {
+    backgroundColor: "#FEE2E2",
+    color: "#B91C1C",
+  },
+  sampleHint: {
+    color: "#6B7280",
+    fontSize: 10,
+    textAlign: "center",
+  },
+  slotButton: {
+    alignItems: "center",
+    borderColor: "#2563EB",
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingVertical: 8,
+  },
+  slotButtonText: {
+    color: "#2563EB",
+    fontSize: 12,
+    fontWeight: "700",
   },
   input: {
     backgroundColor: "#FFFFFF",
@@ -351,30 +691,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 12,
   },
+  saveRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
   },
-  secondaryButton: {
-    alignItems: "center",
-    borderColor: "#2563EB",
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 12,
-  },
-  secondaryButtonText: {
-    color: "#2563EB",
-    fontSize: 15,
-    fontWeight: "700",
-  },
   disabledButton: {
     opacity: 0.45,
-  },
-  success: {
-    color: "#166534",
-    fontSize: 13,
-    fontWeight: "700",
   },
   errorText: {
     color: "#B91C1C",

@@ -152,6 +152,11 @@ export class FaceEngine {
     return this.l2Normalize(Array.from(rawOutput));
   }
 
+  /** GUARD FIX: Issue 2 — Idempotent hydration check before enroll. */
+  hasWorker(workerId: string): boolean {
+    return this.enrolled.some((worker) => worker.workerId === workerId);
+  }
+
   enroll(profile: WorkerProfile, embedding: number[]): void {
     this.enrolled = this.enrolled.filter((worker) => worker.workerId !== profile.workerId);
     this.enrolled.push({ ...profile, embedding: this.l2Normalize(embedding) });
