@@ -84,6 +84,13 @@ export class EmbeddingStore {
     this.storage.delete('worker_' + workerId);
   }
 
+  async clearAll(): Promise<void> {
+    for (const workerId of [...this.records.keys()]) {
+      await this.delete(workerId);
+    }
+    console.log('[EmbeddingStore] Cleared all worker records');
+  }
+
   /** GUARD FIX: S3 — List all enrolled workers from MMKV. */
   async list(): Promise<EncryptedEmbeddingRecord[]> {
     return Array.from(this.records.values());

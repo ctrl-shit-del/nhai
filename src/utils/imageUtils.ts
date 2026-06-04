@@ -54,6 +54,23 @@ export function fullFrameNormalize(
   return cropAndNormalize(frame, fullRegion, size, normMin, normMax);
 }
 
+/** Expands a face bbox with margin for MobileFaceNet / MiniFAS crops. */
+export function expandFaceRegion(
+  region: FaceRegion,
+  frame: Pick<ImageFrame, 'width' | 'height'>,
+  scale = 1.3,
+): FaceRegion {
+  const cx = region.x + region.width / 2;
+  const cy = region.y + region.height / 2;
+  const w = region.width * scale;
+  const h = region.height * scale;
+  const x = Math.max(0, Math.round(cx - w / 2));
+  const y = Math.max(0, Math.round(cy - h / 2));
+  const width = Math.min(frame.width - x, Math.round(w));
+  const height = Math.min(frame.height - y, Math.round(h));
+  return { ...region, x, y, width, height };
+}
+
 /**
  * Converts a 4-channel pixel buffer to a 3-channel RGB Uint8Array.
  *

@@ -1,6 +1,6 @@
 import { loadTensorflowModel, TensorflowModel } from "react-native-fast-tflite";
 import { Platform } from "react-native";
-import { MODEL_PATHS } from "./constants";
+import { GUARD_THRESHOLDS, MODEL_PATHS } from "./constants";
 import { CLAHEPreprocessor, ImageFrame } from "../ml/CLAHEPreprocessor";
 import { FaceEngine } from "../ml/FaceEngine";
 import { LivenessDetector } from "../ml/LivenessDetector";
@@ -9,7 +9,9 @@ import { MerkleChain } from "../security/MerkleChain";
 import { GuardStorage } from "../storage/GuardStorage";
 import { SyncEngine } from "../sync/SyncEngine";
 import { isInsideSiteGeofence } from "../utils/GPSHelper";
+import { isGpsValid } from "../utils/locationService";
 import { cropAndNormalize } from "../utils/imageUtils";
+import { downscaleImageFrame, ML_FRAME_MAX_DIM } from "../utils/frameUtils";
 import {
   AttendanceOutcome,
   EnrollmentSession,
@@ -106,16 +108,23 @@ export class GUARDEngine {
     let hydrated = 0;
 
     for (const record of storedRecords) {
-      const embedding =
-        record.matchingEmbedding && record.matchingEmbedding.length > 0
-          ? record.matchingEmbedding
-          : record.transformedEmbedding;
+      const usingLegacy =
+        !record.matchingEmbedding || record.matchingEmbedding.length === 0;
+      const embedding = usingLegacy
+        ? record.transformedEmbedding
+        : record.matchingEmbedding;
 
       if (!embedding || embedding.length === 0) {
         console.warn(
           `[GUARDEngine] Skipping worker ${record.workerId} — no embedding data`,
         );
         continue;
+      }
+
+      if (usingLegacy) {
+        console.warn(
+          `[GUARDEngine] Worker ${record.workerName} uses legacy embedding — re-enroll for reliable matching`,
+        );
       }
 
       if (this.faceEngine.hasWorker(record.workerId)) {
@@ -249,9 +258,10 @@ export class GUARDEngine {
     const embeddings: number[][] = [];
 
     for (const sample of samples.slice(0, 3)) {
-      const frame = this.preprocessor.preprocess(sample);
+      await yield_();
+      const frame = this.prepareRecognitionFrame(sample);
       const face = await this.faceEngine.detectFace(frame);
-      const quality = this.faceEngine.assessQuality(face);
+      const quality = this.faceEngine.assessQuality(face, frame);
       if (!face || !quality.accepted) {
         throw new Error(
           `Enrollment sample rejected: ${quality.reasons.join(",") || "UNKNOWN"}`,
@@ -260,9 +270,47 @@ export class GUARDEngine {
       embeddings.push(await this.faceEngine.generateEmbedding(frame, face));
     }
 
-    const averaged = this.averageEmbeddings(embeddings);
+    const averaged = this.l2NormalizeEmbedding(this.averageEmbeddings(embeddings));
+
+    // Replace stale rows for the same display name (old pipeline embeddings).
+    const existing = await this.embeddingStore.list();
+    for (const record of existing) {
+      if (
+        record.workerName.toLowerCase() === profile.workerName.toLowerCase() &&
+        record.workerId !== profile.workerId
+      ) {
+        await this.embeddingStore.delete(record.workerId);
+        this.faceEngine.removeWorker(record.workerId);
+        console.log(
+          `[GUARDEngine] Replaced prior enrollment for ${record.workerName} (${record.workerId})`,
+        );
+      }
+    }
+
+    const selfCheck = this.faceEngine.similarity(embeddings[0], averaged);
+    console.log(
+      `[GUARDEngine] Enroll self-check: sample1 vs template ${(selfCheck * 100).toFixed(1)}%`,
+    );
+
     await this.embeddingStore.save(profile, averaged);
     this.faceEngine.enroll(profile, averaged);
+  }
+
+  async deleteWorker(workerId: string): Promise<void> {
+    this.assertReady();
+    await this.embeddingStore.delete(workerId);
+    this.faceEngine.removeWorker(workerId);
+  }
+
+  async clearAllWorkers(): Promise<void> {
+    this.assertReady();
+    const records = await this.embeddingStore.list();
+    for (const record of records) {
+      this.faceEngine.removeWorker(record.workerId);
+    }
+    this.faceEngine.clearAll();
+    await this.embeddingStore.clearAll();
+    console.log('[GUARDEngine] All workers cleared from device');
   }
 
   // ── Attendance ─────────────────────────────────────────────────────────────
@@ -290,13 +338,22 @@ export class GUARDEngine {
   ): Promise<AttendanceOutcome> {
     this.assertReady();
 
-    // ── 1. GPS Geofence check ──────────────────────────────────────────────
+    // Extend liveness window — photo + ML pipeline can exceed the UI challenge timer.
+    let livenessSession = activeLivenessSession
+      ? {
+          ...activeLivenessSession,
+          expiresAt: Date.now() + GUARD_THRESHOLDS.livenessTimeoutMs,
+        }
+      : undefined;
+
+    // ── 1. GPS Geofence check (skipped when fix unavailable — PRD allows indoor commit)
     if (
       this.config.siteLocation &&
+      isGpsValid(gps) &&
       !isInsideSiteGeofence(gps, this.config.siteLocation)
     ) {
       const session =
-        activeLivenessSession ?? this.livenessDetector.createSession();
+        livenessSession ?? this.livenessDetector.createSession();
       return {
         status: "REVIEW_REQUIRED",
         reason: "OUTSIDE_GEOFENCE",
@@ -304,16 +361,15 @@ export class GUARDEngine {
       };
     }
 
-    // ── 2. CLAHE preprocessing ────────────────────────────────────────────
+    // ── 2. Downscale to ML resolution (no CLAHE — keeps enroll/attendance consistent)
     await yield_();
-    const small = downscaleFrame(frame, 320);
-    const processed = this.preprocessor.preprocess(small);
+    const processed = this.prepareRecognitionFrame(frame);
     await this.yieldToUI();
 
     // ── 3. Face detection + quality gate ──────────────────────────────────
     await yield_();
     const face = await this.faceEngine.detectFace(processed);
-    const quality = this.faceEngine.assessQuality(face);
+    const quality = this.faceEngine.assessQuality(face, processed);
     if (!face || !quality.accepted) {
       throw new Error(
         `Face quality rejected: ${quality.reasons.join(",") || "UNKNOWN"}`,
@@ -325,10 +381,10 @@ export class GUARDEngine {
     // ── 4. Liveness check ─────────────────────────────────────────────────
     let liveness: LivenessSession;
 
-    if (activeLivenessSession) {
+    if (livenessSession) {
       // Active check already confirmed by screen — only run passive here
       liveness = await this.evaluatePassiveLiveness(
-        activeLivenessSession,
+        livenessSession,
         processed,
         face,
       );
@@ -363,13 +419,28 @@ export class GUARDEngine {
     // ── 5. Face embedding + recognition ───────────────────────────────────
     await yield_();
     const embedding = await this.faceEngine.generateEmbedding(processed, face);
+    console.log(
+      `[GUARDEngine] Recognition frame ${processed.width}x${processed.height} ` +
+        `face=${face.width}x${face.height}@${face.confidence.toFixed(2)}`,
+    );
     const recognition = this.faceEngine.match(
       embedding,
-      this.config.recognitionThreshold,
+      this.config.recognitionThreshold ??
+        (this.config.allowLowConfidenceCommit
+          ? 0.55
+          : undefined),
     );
     if (!recognition) {
+      console.warn(
+        `[GUARDEngine] No match — enrolled=${this.faceEngine.getEnrollmentCount()} ` +
+          `threshold=${this.config.recognitionThreshold ?? (this.config.allowLowConfidenceCommit ? 0.55 : GUARD_THRESHOLDS.recognition)}`,
+      );
       throw new Error("No enrolled worker matched recognition threshold.");
     }
+
+    console.log(
+      `[GUARDEngine] Matched ${recognition.workerName} at ${(recognition.confidence * 100).toFixed(1)}% (${recognition.tier})`,
+    );
 
     if (recognition.tier === "LOW" && !this.config.allowLowConfidenceCommit) {
       return {
@@ -407,26 +478,31 @@ export class GUARDEngine {
     frame: ImageFrame,
     face: FaceRegion,
   ): Promise<LivenessSession> {
-    // If the frame is a mockFrame (flat colour, zero variance) skip passive
-    // liveness — this only happens when no real camera frame was captured.
-    const isMockFrame = this._isFlatFrame(frame);
-    if (isMockFrame) {
+    if (this._isFlatFrame(frame)) {
       console.log(
         "[GUARDEngine] Mock frame detected — skipping passive liveness.",
       );
       return this.livenessDetector.evaluatePassiveFromScore(session, 0.0);
     }
 
+    let minifasSession: LivenessSession | null = null;
+
     if (this.models.minifas) {
       try {
         const input = cropAndNormalize(frame, face, MINIFAS_INPUT_SIZE, 0, 1);
         const output = await this.models.minifas.run([input]);
         const scores = output[0] as Float32Array;
-        const spoofScore = scores.length >= 1 ? 1.0 - scores[0] : 1.0;
-        return this.livenessDetector.evaluatePassiveFromScore(
+        const spoofScore = miniFasSpoofScore(scores);
+        const probs = softmaxLogits(scores);
+        console.log(
+          `[GUARDEngine] MiniFAS raw=[${formatScores(scores)}] ` +
+            `probs=[${formatScores(probs)}] spoofScore=${spoofScore.toFixed(3)}`,
+        );
+        minifasSession = this.livenessDetector.evaluatePassiveFromScore(
           session,
           spoofScore,
         );
+        if (minifasSession.passivePassed) return minifasSession;
       } catch (minifasError) {
         console.warn(
           "[GUARDEngine] MiniFAS error — falling back to heuristic.",
@@ -434,7 +510,24 @@ export class GUARDEngine {
         );
       }
     }
-    return this.livenessDetector.evaluatePassive(session, frame);
+
+    // GPU preview snapshots often fail MiniFAS even for live faces.
+    // After the user completes the active challenge, allow pixel heuristic.
+    if (session.activePassed) {
+      const heuristic = await this.livenessDetector.evaluatePassive(
+        session,
+        frame,
+      );
+      console.log(
+        `[GUARDEngine] Passive heuristic spoofScore=${heuristic.spoofScore.toFixed(3)} passed=${heuristic.passivePassed}`,
+      );
+      if (heuristic.passivePassed) return heuristic;
+    }
+
+    return (
+      minifasSession ??
+      this.livenessDetector.evaluatePassive(session, frame)
+    );
   }
 
   /** Returns true if every pixel in the frame has the same value — mockFrame indicator. */
@@ -475,6 +568,17 @@ export class GUARDEngine {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
+  /** Shared downscale path for enrollment + attendance (no CLAHE on embeddings). */
+  private prepareRecognitionFrame(frame: ImageFrame): ImageFrame {
+    return downscaleImageFrame(frame, ML_FRAME_MAX_DIM);
+  }
+
+  private l2NormalizeEmbedding(vector: number[]): number[] {
+    const magnitude =
+      Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
+    return vector.map((value) => value / magnitude);
+  }
+
   private averageEmbeddings(embeddings: number[][]): number[] {
     if (embeddings.length === 0)
       throw new Error("At least one enrollment sample is required.");
@@ -505,29 +609,34 @@ export class GUARDEngine {
 /** Yield to the JS event loop so the UI thread stays responsive. */
 const yield_ = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+function formatScores(scores: Float32Array): string {
+  return Array.from(scores.slice(0, 4))
+    .map((v) => v.toFixed(3))
+    .join(", ");
+}
+
+function softmaxLogits(logits: Float32Array): Float32Array {
+  const values = Array.from(logits);
+  const max = Math.max(...values);
+  const exps = values.map((v) => Math.exp(v - max));
+  const sum = exps.reduce((a, b) => a + b, 0) || 1;
+  return new Float32Array(exps.map((e) => e / sum));
+}
+
 /**
- * Downscale a frame to at most maxDim on its longest side.
- * CLAHE on 320×180 takes ~15ms vs ~2500ms on 1280×720.
+ * MiniFAS outputs raw logits (not probabilities).
+ * 3-class: [fake, replay/print, live] — live is the last index.
+ * 2-class: [spoof, real].
  */
-function downscaleFrame(frame: ImageFrame, maxDim = 320): ImageFrame {
-  const scale = Math.min(1, maxDim / Math.max(frame.width, frame.height));
-  if (scale >= 1) return frame; // already small enough
+function miniFasSpoofScore(scores: Float32Array): number {
+  const probs = softmaxLogits(scores);
 
-  const dstW = Math.max(1, Math.round(frame.width * scale));
-  const dstH = Math.max(1, Math.round(frame.height * scale));
-  const ch = frame.channels;
-  const out = new Uint8Array(dstW * dstH * ch);
-  const xR = frame.width / dstW;
-  const yR = frame.height / dstH;
-
-  for (let y = 0; y < dstH; y++) {
-    for (let x = 0; x < dstW; x++) {
-      const sx = Math.min(frame.width - 1, Math.floor(x * xR));
-      const sy = Math.min(frame.height - 1, Math.floor(y * yR));
-      const src = (sy * frame.width + sx) * ch;
-      const dst = (y * dstW + x) * ch;
-      for (let c = 0; c < ch; c++) out[dst + c] = frame.data[src + c];
-    }
+  if (probs.length >= 3) {
+    const realProb = probs[probs.length - 1];
+    return Math.max(0, Math.min(1, 1.0 - realProb));
   }
-  return { width: dstW, height: dstH, channels: frame.channels, data: out };
+  if (probs.length >= 2) {
+    return Math.max(0, Math.min(1, probs[0]));
+  }
+  return Math.max(0, Math.min(1, 1.0 - probs[0]));
 }

@@ -1,16 +1,15 @@
 import type { TensorflowModel } from 'react-native-fast-tflite';
 import { GUARD_THRESHOLDS } from '../config/constants';
 import { FaceQuality, FaceRegion, RecognitionResult, WorkerProfile } from '../types';
-import { cropAndNormalize, fullFrameNormalize } from '../utils/imageUtils';
+import { cropAndNormalize, expandFaceRegion, fullFrameNormalize } from '../utils/imageUtils';
 import { sha256Placeholder } from '../utils/hash';
 import { ImageFrame } from './CLAHEPreprocessor';
+import { parseBlazeFaceOutputs } from './blazefaceDecode';
 
 // ── BlazeFace model specs ──────────────────────────────────────────────────────
-// Input:  Float32Array  [128 × 128 × 3] normalised [0, 1]
-// Output: boxes  Float32Array  [N × 4]  (ymin, xmin, ymax, xmax) in [0, 1]
-//         scores Float32Array  [N]       confidence per anchor
+// Input:  Float32Array  [128 × 128 × 3] normalised [−1, 1]  (MediaPipe / TFJS)
+// Output: regressors [896 × 16] + scores [896 × 1]
 const BLAZEFACE_INPUT_SIZE  = 128;
-const BLAZEFACE_CONF_THRESH = 0.5;
 
 // ── MobileFaceNet model specs ──────────────────────────────────────────────────
 // Input:  Float32Array  [112 × 112 × 3] normalised [−1, 1]
@@ -57,35 +56,15 @@ export class FaceEngine {
 
     if (this.blazefaceModel) {
       try {
-        // Resize entire frame to 128×128, normalise to [0, 1]
-        const input  = fullFrameNormalize(frame, BLAZEFACE_INPUT_SIZE, 0, 1);
+        // BlazeFace expects [-1, 1] normalisation (not [0, 1]).
+        const input  = fullFrameNormalize(frame, BLAZEFACE_INPUT_SIZE, -1, 1);
         const output = await this.blazefaceModel.run([input]);
 
-        const boxes  = output[0] as Float32Array; // [N × 4]
-        const scores = output[1] as Float32Array; // [N]
-
-        let bestScore = -1, bestIdx = -1;
-        for (let i = 0; i < scores.length; i++) {
-          if (scores[i] > bestScore) { bestScore = scores[i]; bestIdx = i; }
-        }
-
-        if (bestScore < BLAZEFACE_CONF_THRESH || bestIdx < 0) return null;
-
-        // BlazeFace boxes: [ymin, xmin, ymax, xmax] normalised
-        const ymin = boxes[bestIdx * 4];
-        const xmin = boxes[bestIdx * 4 + 1];
-        const ymax = boxes[bestIdx * 4 + 2];
-        const xmax = boxes[bestIdx * 4 + 3];
-
-        return {
-          x:          Math.round(xmin * frame.width),
-          y:          Math.round(ymin * frame.height),
-          width:      Math.round((xmax - xmin) * frame.width),
-          height:     Math.round((ymax - ymin) * frame.height),
-          confidence: bestScore,
-        };
+        const tensor0 = output[0] as Float32Array;
+        const tensor1 = (output[1] as Float32Array | undefined) ?? new Float32Array(0);
+        const face = parseBlazeFaceOutputs(tensor0, tensor1, frame.width, frame.height);
+        if (face) return face;
       } catch (modelError) {
-        // Model error — fall through to mock
         console.warn('[FaceEngine] BlazeFace inference error:', modelError);
       }
     }
@@ -100,12 +79,17 @@ export class FaceEngine {
     };
   }
 
-  assessQuality(region: FaceRegion | null): FaceQuality {
+  assessQuality(region: FaceRegion | null, frame?: Pick<ImageFrame, 'width' | 'height'>): FaceQuality {
     if (!region) {
       return { score: 0, accepted: false, reasons: ['NO_FACE'] };
     }
-    const areaScore = Math.min(1, (region.width * region.height) / 90_000);
-    const score     = Number(((region.confidence * 0.7) + (areaScore * 0.3)).toFixed(3));
+
+    const faceArea = region.width * region.height;
+    const areaScore = frame
+      ? Math.min(1, faceArea / (frame.width * frame.height * 0.08))
+      : Math.min(1, faceArea / 90_000);
+
+    const score = Number(((region.confidence * 0.7) + (areaScore * 0.3)).toFixed(3));
     return {
       score,
       accepted: score >= GUARD_THRESHOLDS.faceQuality,
@@ -126,7 +110,8 @@ export class FaceEngine {
 
     if (this.mobilefacenetModel) {
       try {
-        const input  = cropAndNormalize(frame, region, MOBILEFACENET_INPUT_SIZE, -1, 1);
+        const crop = expandFaceRegion(region, frame);
+        const input  = cropAndNormalize(frame, crop, MOBILEFACENET_INPUT_SIZE, -1, 1);
         const output = await this.mobilefacenetModel.run([input]);
         return this.l2Normalize(Array.from(output[0] as Float32Array));
       } catch (modelError) {
@@ -174,7 +159,17 @@ export class FaceEngine {
       }
     }
 
-    if (!best || best.confidence < threshold) return null;
+    if (!best || best.confidence < threshold) {
+      if (best) {
+        console.warn(
+          `[FaceEngine] Best match ${best.worker.workerName} at ${(best.confidence * 100).toFixed(1)}% ` +
+            `(need ${(threshold * 100).toFixed(0)}%)`,
+        );
+      } else {
+        console.warn('[FaceEngine] No enrolled workers to match against');
+      }
+      return null;
+    }
 
     return {
       workerId:       best.worker.workerId,
@@ -187,6 +182,19 @@ export class FaceEngine {
 
   getEnrollmentCount(): number {
     return this.enrolled.length;
+  }
+
+  removeWorker(workerId: string): void {
+    this.enrolled = this.enrolled.filter((worker) => worker.workerId !== workerId);
+  }
+
+  clearAll(): void {
+    this.enrolled = [];
+  }
+
+  /** Cosine similarity between two embeddings (both should be L2-normalized). */
+  similarity(left: number[], right: number[]): number {
+    return this.cosineSimilarity(this.l2Normalize(left), this.l2Normalize(right));
   }
 
   private cosineSimilarity(left: number[], right: number[]): number {

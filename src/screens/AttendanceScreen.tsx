@@ -1,17 +1,33 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Geolocation from "@react-native-community/geolocation";
-import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Camera } from "react-native-vision-camera";
-
-const CameraView = Camera as any;
 import { FaceOverlay } from "../components/FaceOverlay";
 import { useCameraFrame } from "../hooks/useCameraFrame";
+import { getAccuracyTier } from "../utils/GPSHelper";
+import {
+  acquireGpsForAttendance,
+  ensureLocationPermission,
+  isGpsValid,
+  watchGps,
+  type GpsFixSource,
+  type LocationPermissionStatus,
+} from "../utils/locationService";
 import type {
   AttendanceOutcome,
   GPSPoint,
   GUARDEngineProps,
   LivenessSession,
 } from "../types";
+
+const CameraView = Camera as any;
 
 type AttendanceStatus =
   | "idle"
@@ -23,49 +39,105 @@ type AttendanceStatus =
 
 const yieldToUI = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+function gpsStatusLabel(
+  gps: GPSPoint | null,
+  permission: LocationPermissionStatus,
+  source: GpsFixSource | null,
+): string {
+  if (permission === "checking") return "Checking location permission…";
+  if (permission === "denied" || permission === "blocked") {
+    return "Location permission required for attendance.";
+  }
+  if (!isGpsValid(gps)) {
+    return "GPS unavailable — attendance will proceed without coordinates.";
+  }
+  const tier = getAccuracyTier(gps);
+  const via = source === "network" ? " (network)" : source === "stale" ? " (cached)" : "";
+  return `GPS ${tier.toLowerCase()}${via} · ±${Math.round(gps!.accuracyM)} m`;
+}
+
 export function AttendanceScreen({ engine }: GUARDEngineProps) {
   const [status, setStatus] = useState<AttendanceStatus>("idle");
   const [livenessSession, setLivenessSession] =
     useState<LivenessSession | null>(null);
   const [outcome, setOutcome] = useState<AttendanceOutcome | null>(null);
   const [gps, setGps] = useState<GPSPoint | null>(null);
+  const [locationPermission, setLocationPermission] =
+    useState<LocationPermissionStatus>("checking");
+  const [gpsSource, setGpsSource] = useState<GpsFixSource | null>(null);
   const [chainLength, setChainLength] = useState(engine.getStats().chainLength);
   const [message, setMessage] = useState(
     "Point camera at your face to mark attendance.",
   );
 
-  // ── Camera + frame processor ─────────────────────────────────────────────
+  const gpsRef = useRef<GPSPoint | null>(null);
+
   const {
-    hasPermission,
-    requestPermission,
+    hasPermission: hasCameraPermission,
+    requestPermission: requestCameraPermission,
     device,
     cameraRef,
-    frameProcessor,
     captureFrame,
-    captureDetectedFace,
-    sharedQuality,
-  } = useCameraFrame(engine.models.blazeface, "front");
+  } = useCameraFrame(engine.models.blazeface, "front", {
+    preferSnapshot: true,
+  });
 
-  // ── GPS fix (refreshed continuously) ─────────────────────────────────────
+  // Keep ref in sync for async callbacks
   useEffect(() => {
-    const watchId = Geolocation.watchPosition(
-      (position: any) => {
-        setGps({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracyM: position.coords.accuracy,
-          capturedAt: Date.now(),
-        });
-      },
-      (gpsError: any) => {
-        setMessage(`GPS unavailable: ${gpsError.message}`);
-      },
-      { enableHighAccuracy: true, distanceFilter: 10 },
-    );
-    return () => Geolocation.clearWatch(watchId);
+    gpsRef.current = gps;
+  }, [gps]);
+
+  // ── Location permission + continuous GPS watch ───────────────────────────
+  useEffect(() => {
+    let watchId: number | null = null;
+    let mounted = true;
+
+    const startGps = async () => {
+      setLocationPermission("checking");
+      const granted = await ensureLocationPermission();
+      if (!mounted) return;
+
+      if (!granted) {
+        setLocationPermission(
+          Platform.OS === "android" ? "denied" : "denied",
+        );
+        setMessage("Location permission required. Enable it to mark attendance.");
+        return;
+      }
+
+      setLocationPermission("granted");
+
+      watchId = watchGps(
+        (point) => {
+          if (mounted) {
+            setGps(point);
+            setGpsSource("network");
+          }
+        },
+        (gpsError) => {
+          console.warn("[AttendanceScreen] GPS watch error:", gpsError);
+        },
+      );
+
+      const primed = await acquireGpsForAttendance();
+      if (mounted && isGpsValid(primed.point)) {
+        setGps(primed.point);
+        setGpsSource(primed.source);
+      } else if (mounted) {
+        console.warn("[AttendanceScreen] Initial GPS unavailable — indoor/network only");
+      }
+    };
+
+    startGps();
+
+    return () => {
+      mounted = false;
+      if (watchId != null) {
+        Geolocation.clearWatch(watchId);
+      }
+    };
   }, []);
 
-  // ── Auto-reset after success ──────────────────────────────────────────────
   useEffect(() => {
     if (status !== "success") return undefined;
     const timer = setTimeout(() => {
@@ -77,30 +149,57 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
     return () => clearTimeout(timer);
   }, [status]);
 
-  // ── Camera permission request ─────────────────────────────────────────────
   useEffect(() => {
-    if (!hasPermission) requestPermission();
-  }, [hasPermission, requestPermission]);
+    if (!hasCameraPermission) requestCameraPermission();
+  }, [hasCameraPermission, requestCameraPermission]);
 
-  // ── Step 1: Begin attendance — show liveness challenges ───────────────────
+  const resolveGpsFix = useCallback(async () => {
+    const granted = await ensureLocationPermission();
+    if (!granted) {
+      setLocationPermission("denied");
+      return null;
+    }
+    setLocationPermission("granted");
+
+    const acquired = await acquireGpsForAttendance(gpsRef.current);
+    setGps(acquired.point);
+    setGpsSource(acquired.source);
+    gpsRef.current = acquired.point;
+
+    if (acquired.source === "unavailable") {
+      console.warn("[AttendanceScreen] No GPS fix — proceeding without coordinates");
+    }
+
+    return acquired;
+  }, []);
+
+  const openLocationSettings = useCallback(() => {
+    Linking.openSettings().catch(() => {
+      setMessage("Unable to open device settings.");
+    });
+  }, []);
+
   const beginAttendance = useCallback(() => {
+    if (locationPermission !== "granted") {
+      setMessage("Location permission required before marking attendance.");
+      return;
+    }
+
     const session = engine.livenessDetector.createSession();
     setOutcome(null);
     setLivenessSession(session);
     setStatus("liveness");
     setMessage(`Liveness check: ${session.challenges.join(", ")}`);
-  }, [engine]);
+  }, [engine, locationPermission]);
 
-  // ── Step 2: Complete challenge — process real camera frame ────────────────
   const completeChallenge = useCallback(async () => {
-    if (!livenessSession) return;
+    if (!livenessSession || status === "processing") return;
 
     setStatus("processing");
     setMessage("Processing liveness and recognition…");
     await yieldToUI();
 
     try {
-      // Evaluate active challenge (user confirmed they performed the gesture)
       const activeSession = engine.livenessDetector.evaluateActive(
         livenessSession,
         livenessSession.challenges,
@@ -108,26 +207,21 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
 
       await yieldToUI();
 
-      // Capture latest throttled camera frame (synthetic fallback inside hook if needed)
-      const currentFrame = captureFrame();
+      const currentFrame = await captureFrame();
 
-      if (!gps) {
+      setMessage("Acquiring location…");
+      const acquired = await resolveGpsFix();
+      if (!acquired) {
         setStatus("failed");
-        setMessage("GPS fix required. Move to an open area and try again.");
+        setMessage(
+          "Location permission denied. Enable location in Settings and try again.",
+        );
         return;
       }
 
-      // GUARDEngine.markAttendance runs:
-      //   1. CLAHE preprocessing
-      //   2. BlazeFace detection (TFLite or mock)
-      //   3. MiniFAS passive liveness (TFLite or heuristic)
-      //   4. GPS geofence check (if config.siteLocation set)
-      //   5. MobileFaceNet embedding (TFLite or mock)
-      //   6. Cosine-similarity match against enrolled workers
-      //   7. Merkle-chain commit
       const nextOutcome = await engine.markAttendance(
         currentFrame,
-        gps,
+        acquired.point,
         activeSession,
       );
       setOutcome(nextOutcome);
@@ -135,9 +229,13 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
       if (nextOutcome.status === "COMMITTED") {
         setStatus("success");
         setChainLength(engine.getStats().chainLength);
+        const gpsNote =
+          acquired.source === "unavailable"
+            ? " (no GPS — recorded without coordinates)"
+            : "";
         setMessage(
           `${nextOutcome.record?.workerName ?? nextOutcome.recognition?.workerName ?? "Worker"} ` +
-            `marked at ${Math.round((nextOutcome.recognition?.confidence ?? 0) * 100)}% confidence.`,
+            `marked at ${Math.round((nextOutcome.recognition?.confidence ?? 0) * 100)}% confidence${gpsNote}.`,
         );
       } else if (nextOutcome.reason === "OUTSIDE_GEOFENCE") {
         setStatus("failed");
@@ -150,7 +248,7 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
       ) {
         setStatus("spoof");
         setMessage(
-          "Liveness check failed. Possible spoofing attempt — incident logged.",
+          "Liveness check failed. Ensure good lighting and look at the camera directly, then try again.",
         );
       } else {
         setStatus("failed");
@@ -164,41 +262,65 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
           : "Attendance failed",
       );
     }
-  }, [livenessSession, engine, captureFrame, gps]);
+  }, [
+    livenessSession,
+    status,
+    engine,
+    captureFrame,
+    resolveGpsFix,
+  ]);
 
   const prompt = livenessSession
     ? livenessSession.challenges.join(", ")
     : "Align face within frame";
 
+  const gpsLabel = gpsStatusLabel(gps, locationPermission, gpsSource);
+  const canMark =
+    locationPermission === "granted" &&
+    status !== "processing" &&
+    status !== "success";
+
   return (
     <View style={styles.screen}>
-      {/* ── Camera pane ──────────────────────────────────────────────────── */}
       <View style={styles.cameraPane}>
-        {device && hasPermission ? (
+        {device && hasCameraPermission ? (
           <CameraView
             ref={cameraRef as any}
             style={StyleSheet.absoluteFill}
             device={device}
             isActive={status !== "success"}
-            frameProcessor={frameProcessor}
-            pixelFormat="rgb"
+            photo
+            video
           />
         ) : (
           <Text style={styles.cameraLabel}>
-            {hasPermission ? "Loading camera…" : "Camera permission required"}
+            {hasCameraPermission ? "Loading camera…" : "Camera permission required"}
           </Text>
         )}
         <FaceOverlay prompt={prompt} spoofWarning={status === "spoof"} />
       </View>
 
-      {/* ── Info panel ───────────────────────────────────────────────────── */}
       <View style={styles.panel}>
         <Text style={styles.title}>Attendance</Text>
+        <Text
+          style={[
+            styles.gpsStatus,
+            locationPermission !== "granted" ? styles.gpsWarn : null,
+          ]}
+        >
+          {gpsLabel}
+        </Text>
         <Text
           style={[styles.body, status === "spoof" ? styles.spoofText : null]}
         >
           {message}
         </Text>
+
+        {locationPermission === "denied" ? (
+          <Pressable style={styles.secondaryButton} onPress={openLocationSettings}>
+            <Text style={styles.secondaryButtonText}>Open Settings</Text>
+          </Pressable>
+        ) : null}
 
         {outcome?.status === "COMMITTED" ? (
           <Text style={styles.body}>
@@ -210,16 +332,20 @@ export function AttendanceScreen({ engine }: GUARDEngineProps) {
         <Text style={styles.counter}>Chain records: {chainLength}</Text>
 
         {status === "liveness" ? (
-          <Pressable style={styles.primaryButton} onPress={completeChallenge}>
+          <Pressable
+            style={styles.primaryButton}
+            disabled={status === "processing"}
+            onPress={completeChallenge}
+          >
             <Text style={styles.primaryButtonText}>Complete Challenge</Text>
           </Pressable>
         ) : (
           <Pressable
             style={[
               styles.primaryButton,
-              status === "processing" ? styles.disabledButton : null,
+              !canMark ? styles.disabledButton : null,
             ]}
-            disabled={status === "processing"}
+            disabled={!canMark}
             onPress={beginAttendance}
           >
             <Text style={styles.primaryButtonText}>
@@ -259,6 +385,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
   },
+  gpsStatus: {
+    color: "#059669",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  gpsWarn: {
+    color: "#B45309",
+  },
   body: {
     color: "#4B5563",
     fontSize: 14,
@@ -280,6 +414,18 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
+    fontWeight: "700",
+  },
+  secondaryButton: {
+    alignItems: "center",
+    borderColor: "#2563EB",
+    borderRadius: 6,
+    borderWidth: 1,
+    padding: 10,
+  },
+  secondaryButtonText: {
+    color: "#2563EB",
+    fontSize: 14,
     fontWeight: "700",
   },
   spoofText: {

@@ -1,7 +1,7 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChainBadge } from '../components/ChainBadge';
 import type { GUARDEngine } from '../config/GUARDEngine';
 import type { GUARDEngineProps } from '../types';
@@ -16,6 +16,24 @@ export function DashboardScreen({ engine }: GUARDEngineProps) {
   const refreshStats = () => {
     setStats(engine.getStats());
   };
+
+  const confirmClearWorkers = useCallback(() => {
+    Alert.alert(
+      'Clear all workers?',
+      'This removes every enrolled face from this device. You will need to re-enroll before attendance works.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear all',
+          style: 'destructive',
+          onPress: async () => {
+            await engine.clearAllWorkers();
+            refreshStats();
+          },
+        },
+      ],
+    );
+  }, [engine]);
 
   // GUARD FIX: Issue 5 — Refresh worker count when returning from Enrollment
   useFocusEffect(
@@ -50,6 +68,11 @@ export function DashboardScreen({ engine }: GUARDEngineProps) {
       <Pressable style={styles.secondaryButton} onPress={refreshStats}>
         <Text style={styles.secondaryButtonText}>Refresh</Text>
       </Pressable>
+      {stats.enrolledWorkers > 0 ? (
+        <Pressable style={styles.dangerButton} onPress={confirmClearWorkers}>
+          <Text style={styles.dangerButtonText}>Clear enrolled workers</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -126,6 +149,19 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#2563EB',
     fontSize: 15,
+    fontWeight: '700'
+  },
+  dangerButton: {
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+    borderRadius: 6,
+    borderWidth: 1,
+    padding: 12
+  },
+  dangerButtonText: {
+    color: '#B91C1C',
+    fontSize: 14,
     fontWeight: '700'
   }
 });

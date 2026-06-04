@@ -39,7 +39,8 @@ export class LivenessDetector {
   // Input: 80x80 RGB Float32Array normalized to [0,1]
   // Output: [spoof_prob, real_prob] — use scores[1] as passivePassed signal
   async evaluatePassive(session: LivenessSession, frame: ImageFrame): Promise<LivenessSession> {
-    const timedOut = Date.now() > session.expiresAt;
+    // Active challenge already confirmed — don't expire passive check mid-pipeline.
+    const timedOut = Date.now() > session.expiresAt && !session.activePassed;
     const data = frame.data;
     const pixelCount = Math.max(1, data.length / 3);
 
@@ -108,7 +109,7 @@ export class LivenessDetector {
    *                   1 = definitely spoofed (derived as `1 − scores[1]` from the model).
    */
   evaluatePassiveFromScore(session: LivenessSession, spoofScore: number): LivenessSession {
-    const timedOut     = Date.now() > session.expiresAt;
+    const timedOut     = Date.now() > session.expiresAt && !session.activePassed;
     const passivePassed = !timedOut && spoofScore <= GUARD_THRESHOLDS.passiveSpoof;
     return {
       ...session,

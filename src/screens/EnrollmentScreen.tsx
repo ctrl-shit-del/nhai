@@ -95,6 +95,8 @@ export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) 
   } | null>(null);
 
   const deviceFront = useCameraDevice("front");
+  const [capturing, setCapturing] = useState(false);
+  const captureInFlightRef = useRef(false);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const engineReady = isReady || engine.isEngineReady();
@@ -108,12 +110,12 @@ export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) 
   const {
     device: hookDevice,
     cameraRef,
-    frameProcessor,
     captureFrame,
     hasRealFrame,
   } = useCameraFrame(engine.models.blazeface, "front", {
     detectEnabled: !detectionPaused,
     inferenceThrottleMs: 300,
+    preferSnapshot: true,
   });
 
   const device = hookDevice ?? deviceFront;
@@ -156,11 +158,16 @@ export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) 
       hint: string;
     }> => {
       try {
-        const processed = engine.preprocessor.preprocess(frame);
-        const face = await engine.faceEngine.detectFace(processed);
-        const quality = engine.faceEngine.assessQuality(face);
+        const small = frame;
+        // Fast precheck — same orientation pipeline as enrollWorker.
+        const face = await engine.faceEngine.detectFace(small);
+        const quality = engine.faceEngine.assessQuality(face, small);
 
         if (!face || !quality.accepted) {
+          console.log(
+            `[EnrollmentScreen] Precheck rejected — score=${quality.score} ` +
+              `face=${face ? `${face.width}x${face.height}@${face.confidence.toFixed(2)}` : 'none'}`,
+          );
           const reason = quality.reasons.includes("NO_FACE")
             ? "NO_FACE"
             : "LOW_QUALITY";
@@ -186,47 +193,79 @@ export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) 
   // GUARD FIX: Issue 3 — Per-slot capture / retake
   const captureSample = useCallback(
     async (index: 0 | 1 | 2) => {
-      if (!engineReady || enrolling) return;
+      if (!engineReady || enrolling || captureInFlightRef.current) return;
 
+      captureInFlightRef.current = true;
+      setCapturing(true);
       setError(null);
-      const currentFrame = captureFrame();
-      const usedReal = hasRealFrame();
 
-      console.log(
-        `[EnrollmentScreen] Capture S${index + 1} — realFrame=${usedReal} ${currentFrame.width}x${currentFrame.height}`,
-      );
+      try {
+        const currentFrame = await captureFrame();
+        const mlFrame = currentFrame;
+        const usedReal = hasRealFrame();
 
-      const precheck = await runQualityPrecheck(currentFrame);
-
-      setSlots((prev) => {
-        const next = prev.map((s, i) =>
-          i === index
-            ? {
-                frame: currentFrame,
-                status: precheck.status,
-                capturedAt: Date.now(),
-                hint: precheck.hint,
-              }
-            : s,
+        console.log(
+          `[EnrollmentScreen] Capture S${index + 1} — realFrame=${usedReal} ${mlFrame.width}x${mlFrame.height}`,
         );
-        const captured = next.filter((s) => s.frame !== null).length;
 
-        if (!precheck.ok) {
-          setSampleMessage(
-            `S${index + 1}: ${precheck.hint}. Tap Retake on S${index + 1} to try again.`,
+        // Show captured state immediately — quality check runs in background.
+        setSlots((prev) => {
+          const next = prev.map((s, i) =>
+            i === index
+              ? {
+                  frame: mlFrame,
+                  status: "good" as SampleSlotStatus,
+                  capturedAt: Date.now(),
+                  hint: "Checking…",
+                }
+              : s,
           );
-        } else if (captured < 3) {
+          const captured = next.filter((s) => s.frame !== null).length;
           setSampleMessage(
-            `${captured}/3 samples ready. Capture or retake remaining slots.`,
+            captured < 3
+              ? `${captured}/3 samples captured. Checking quality…`
+              : "All 3 samples captured. Checking quality…",
           );
-        } else {
-          setSampleMessage(
-            "All 3 samples ready. Enter worker details and tap Save Enrollment.",
-          );
-        }
+          return next;
+        });
 
-        return next;
-      });
+        void runQualityPrecheck(mlFrame).then((precheck) => {
+          setSlots((prev) => {
+            const next = prev.map((s, i) =>
+              i === index
+                ? {
+                    ...s,
+                    status: precheck.status,
+                    hint: precheck.hint,
+                  }
+                : s,
+            );
+            const captured = next.filter((s) => s.frame !== null).length;
+            const allGood = next.every(
+              (s) => s.frame === null || s.status === "good",
+            );
+
+            if (!precheck.ok) {
+              setSampleMessage(
+                `S${index + 1}: ${precheck.hint}. Tap Retake on S${index + 1} to try again.`,
+              );
+            } else if (captured < 3) {
+              setSampleMessage(
+                `${captured}/3 samples ready. Capture or retake remaining slots.`,
+              );
+            } else if (allGood) {
+              setSampleMessage(
+                "All 3 samples ready. Enter worker details and tap Save Enrollment.",
+              );
+            }
+
+            return next;
+          });
+        });
+      } finally {
+        captureInFlightRef.current = false;
+        setCapturing(false);
+      }
     },
     [
       engineReady,
@@ -386,8 +425,8 @@ export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) 
           style={StyleSheet.absoluteFill}
           device={device}
           isActive={cameraActive}
-          frameProcessor={frameProcessor}
-          pixelFormat="rgb"
+          photo
+          video
         />
         {detectionPaused ? (
           <View style={styles.pauseBadge}>
@@ -464,13 +503,13 @@ export function EnrollmentScreen({ engine, isReady = false }: GUARDEngineProps) 
                 <Pressable
                   style={[
                     styles.slotButton,
-                    (!engineReady || enrolling) && styles.disabledButton,
+                    (!engineReady || enrolling || capturing) && styles.disabledButton,
                   ]}
-                  disabled={!engineReady || enrolling}
+                  disabled={!engineReady || enrolling || capturing}
                   onPress={() => captureSample(index)}
                 >
                   <Text style={styles.slotButtonText}>
-                    {hasFrame ? "Retake" : "Capture"}
+                    {capturing ? "…" : hasFrame ? "Retake" : "Capture"}
                   </Text>
                 </Pressable>
               </View>
